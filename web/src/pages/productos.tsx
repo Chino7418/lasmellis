@@ -151,6 +151,13 @@ function stockDeVariante(variante: Variante) {
     return { total, minimo, bajo: total <= minimo };
 }
 
+const TODAS_LAS_MARCAS = 'todas';
+
+/** Minúsculas y sin acentos, para comparar búsquedas. */
+function normalizar(texto: string): string {
+    return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
 export default function Productos() {
     useTitulo('Productos');
 
@@ -162,6 +169,7 @@ export default function Productos() {
         talles: [],
     });
     const [busqueda, setBusqueda] = useState('');
+    const [marcaFiltro, setMarcaFiltro] = useState(TODAS_LAS_MARCAS);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [abiertos, setAbiertos] = useState<number[]>([]);
@@ -258,32 +266,49 @@ export default function Productos() {
         );
     };
 
+    // Cada palabra tiene que aparecer en algún dato del producto (marca,
+    // nombre, descripción, códigos, categoría, color o talle), sin
+    // importar acentos ni mayúsculas: "sweet encaje" encuentra
+    // "Sweet Lady - Corpiño - Encaje con aro".
     const productosFiltrados = useMemo(() => {
-        const texto = busqueda.trim().toLowerCase();
-
-        if (!texto) {
-            return productos;
-        }
+        const palabras = normalizar(busqueda).split(/\s+/).filter(Boolean);
 
         return productos.filter((producto) => {
-            const coincideProducto =
-                producto.nombre.toLowerCase().includes(texto) ||
-                producto.codigo_interno.toLowerCase().includes(texto) ||
-                producto.categoria?.nombre.toLowerCase().includes(texto) ||
-                producto.marca?.nombre.toLowerCase().includes(texto);
+            if (
+                marcaFiltro !== TODAS_LAS_MARCAS &&
+                String(producto.marca?.id ?? '') !== marcaFiltro
+            ) {
+                return false;
+            }
 
-            const coincideVariante = producto.variantes.some((variante) => {
-                return (
-                    variante.codigo_barras.toLowerCase().includes(texto) ||
-                    variante.codigo_interno?.toLowerCase().includes(texto) ||
-                    variante.color?.nombre.toLowerCase().includes(texto) ||
-                    variante.talle?.nombre.toLowerCase().includes(texto)
-                );
-            });
+            if (palabras.length === 0) {
+                return true;
+            }
 
-            return coincideProducto || coincideVariante;
+            const datos = normalizar(
+                [
+                    producto.marca?.nombre,
+                    producto.nombre,
+                    producto.descripcion,
+                    producto.codigo_interno,
+                    producto.categoria?.nombre,
+                    ...producto.variantes.flatMap((variante) => [
+                        variante.codigo_barras,
+                        variante.codigo_interno,
+                        variante.color?.nombre,
+                        variante.talle?.nombre,
+                    ]),
+                ]
+                    .filter(Boolean)
+                    .join(' '),
+            );
+
+            return palabras.every((palabra) => datos.includes(palabra));
         });
-    }, [productos, busqueda]);
+    }, [productos, busqueda, marcaFiltro]);
+
+    const filtrando =
+        busqueda.trim() !== '' || marcaFiltro !== TODAS_LAS_MARCAS;
 
     const buscarPorCodigoExacto = async (codigo: string) => {
         const texto = codigo.trim();
@@ -483,7 +508,7 @@ export default function Productos() {
                                 setBusqueda(event.target.value)
                             }
                             onKeyDown={manejarEnterBusqueda}
-                            placeholder="Buscar o escanear con lector..."
+                            placeholder="Marca, nombre, descripción o código..."
                             className="pl-9"
                         />
                     </div>
@@ -497,6 +522,28 @@ export default function Productos() {
                     >
                         <ScanLine />
                     </Button>
+
+                    <Select value={marcaFiltro} onValueChange={setMarcaFiltro}>
+                        <SelectTrigger
+                            className="w-full sm:w-48"
+                            aria-label="Filtrar por marca"
+                        >
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value={TODAS_LAS_MARCAS}>
+                                Todas las marcas
+                            </SelectItem>
+                            {catalogos.marcas.map((marca) => (
+                                <SelectItem
+                                    key={marca.id}
+                                    value={String(marca.id)}
+                                >
+                                    {marca.nombre}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
 
                     {!loading && (
                         <span className="text-muted-foreground ml-auto text-sm">
@@ -512,17 +559,27 @@ export default function Productos() {
                     <EstadoVacio
                         icon={Package}
                         title={
-                            busqueda
+                            filtrando
                                 ? 'No se encontraron productos'
                                 : 'Todavía no hay productos'
                         }
                         description={
-                            busqueda
-                                ? 'Probá con otro nombre, código, marca, color o talle.'
+                            filtrando
+                                ? 'Probá con otra marca, nombre, descripción, código, color o talle.'
                                 : 'Cargá tu primer producto para empezar a vender.'
                         }
                         action={
-                            !busqueda && (
+                            filtrando ? (
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setBusqueda('');
+                                        setMarcaFiltro(TODAS_LAS_MARCAS);
+                                    }}
+                                >
+                                    Limpiar filtros
+                                </Button>
+                            ) : (
                                 <Button variant="outline" onClick={abrirNuevo}>
                                     <Plus />
                                     Nuevo producto
