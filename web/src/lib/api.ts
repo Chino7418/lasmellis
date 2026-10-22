@@ -303,10 +303,13 @@ export function generarCodigoInterno(): string {
     return digitos.join('') + ((10 - (suma % 10)) % 10);
 }
 
+/*
+ * El código interno no se envía: lo asigna la base al crear el
+ * producto (P00001, P00002, ...) y después no cambia.
+ */
 export type DatosProducto = {
     categoria_id: number | null;
     marca_id: number | null;
-    codigo_interno: string;
     nombre: string;
     descripcion: string | null;
     costo: string;
@@ -318,21 +321,12 @@ export async function guardarProducto(
     datos: DatosProducto,
     id?: number,
 ): Promise<number> {
-    const codigo = datos.codigo_interno.trim();
     const nombre = datos.nombre.trim();
     const costo = Number(datos.costo);
     const errores: Record<string, string[]> = {};
 
     if (!datos.categoria_id) {
         errores.categoria_id = ['Elegí una categoría.'];
-    }
-
-    if (!codigo) {
-        errores.codigo_interno = ['El código interno es obligatorio.'];
-    } else if (codigo.length > 50) {
-        errores.codigo_interno = [
-            'El código interno admite hasta 50 caracteres.',
-        ];
     }
 
     if (!nombre) {
@@ -350,7 +344,6 @@ export async function guardarProducto(
     const fila = {
         categoria_id: datos.categoria_id,
         marca_id: datos.marca_id,
-        codigo_interno: codigo,
         nombre,
         descripcion: datos.descripcion,
         costo,
@@ -365,12 +358,6 @@ export async function guardarProducto(
               .select('id')
               .single()
         : await supabase.from('productos').insert(fila).select('id').single();
-
-    if (error?.code === '23505') {
-        throw new ErrorValidacion({
-            codigo_interno: ['Ya existe un producto con ese código interno.'],
-        });
-    }
 
     if (error) {
         fallar(error, 'No se pudo guardar el producto.');
@@ -500,13 +487,33 @@ export async function darDeBajaCliente(id: number): Promise<string> {
 /* CUENTA CORRIENTE                                                   */
 /* ------------------------------------------------------------------ */
 
-export async function estadoDeCuenta(clienteId: number) {
+export type MovimientoCuenta = {
+    id: number;
+    tipo: 'debe' | 'haber';
+    importe: number;
+    fecha: string;
+    concepto: string;
+    observaciones: string | null;
+    venta: { numero: string } | null;
+    pago: { medio_pago: string } | null;
+};
+
+/** Movimientos de la cuenta corriente de un cliente, del más viejo al más nuevo. */
+export async function estadoDeCuenta(clienteId: number): Promise<{
+    debe: number;
+    haber: number;
+    saldo: number;
+    movimientos: MovimientoCuenta[];
+}> {
     const { data, error } = await supabase
         .from('movimientos_cuenta_corriente')
-        .select('*')
+        .select(
+            'id, tipo, importe, fecha, concepto, observaciones, venta:ventas ( numero ), pago:pagos ( medio_pago )',
+        )
         .eq('cliente_id', clienteId)
         .order('fecha')
-        .order('id');
+        .order('id')
+        .returns<MovimientoCuenta[]>();
 
     if (error) {
         fallar(error, 'No se pudo obtener la cuenta corriente.');
@@ -608,6 +615,17 @@ export async function registrarVenta(
 /* ------------------------------------------------------------------ */
 /* DASHBOARD                                                          */
 /* ------------------------------------------------------------------ */
+
+/** Cuántas variantes a la venta se quedaron sin stock (aviso del menú). */
+export async function contarSinStock(): Promise<number> {
+    const { data, error } = await supabase.rpc('contar_sin_stock');
+
+    if (error) {
+        return 0;
+    }
+
+    return Number(data) || 0;
+}
 
 export async function obtenerDashboard<T>(): Promise<T> {
     const { data, error } = await supabase.rpc('dashboard_resumen');

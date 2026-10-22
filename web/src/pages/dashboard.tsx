@@ -1,29 +1,27 @@
 import {
+    CalendarDays,
     CheckCircle2,
-    Clock,
     PackageX,
     Receipt,
     ShoppingCart,
+    TrendingUp,
     Users,
-    Wallet,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { EstadoError, EstadoVacio } from '@/components/estados';
+import { GraficoVentasMes } from '@/components/grafico-ventas-mes';
+import type { VentasMes } from '@/components/grafico-ventas-mes';
 import { Page, PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTitulo } from '@/hooks/use-titulo';
 import { obtenerDashboard } from '@/lib/api';
-import {
-    cantidad,
-    dinero,
-    fechaHora,
-    nombreCompleto,
-    tipoPago,
-} from '@/lib/formato';
+import { useAuth } from '@/lib/auth';
+import { dinero, fechaHora, nombreCompleto, tipoPago } from '@/lib/formato';
+import { cn } from '@/lib/utils';
 
 type Venta = {
     id: number;
@@ -34,11 +32,11 @@ type Venta = {
     tipo_pago: string;
 };
 
-type StockBajo = {
-    id: number;
+type SinStock = {
+    variante_id: number;
     producto: string;
-    cantidad: number;
-    stock_minimo: number;
+    color: string | null;
+    talle: string | null;
 };
 
 type Deudor = {
@@ -48,18 +46,15 @@ type Deudor = {
     saldo: number;
 };
 
+type Totales = { cantidad: number; total: number };
+
 type DashboardData = {
     fecha: string;
-    ventas: {
-        cantidad: number;
-        total: number;
-        cobrado: number;
-        pendiente: number;
-    };
-    stock: {
-        productos_stock_bajo: number;
-        detalle: StockBajo[];
-    };
+    ventas: Totales & { cobrado: number; pendiente: number };
+    mes_actual: Totales;
+    por_mes: VentasMes[];
+    total_general: Totales;
+    stock: { sin_stock: SinStock[] };
     cuenta_corriente: {
         clientes_con_deuda: number;
         total_deuda: number;
@@ -74,34 +69,48 @@ const hoyLargo = new Intl.DateTimeFormat('es-AR', {
     month: 'long',
 }).format(new Date());
 
+const mesActual = new Intl.DateTimeFormat('es-AR', { month: 'long' }).format(
+    new Date(),
+);
+
+function ventas(cantidad: number): string {
+    return `${cantidad} venta${cantidad !== 1 ? 's' : ''}`;
+}
+
 export default function Dashboard() {
     useTitulo('Dashboard');
 
+    const { user } = useAuth();
     const [data, setData] = useState<DashboardData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         obtenerDashboard<DashboardData>()
-            .then((resultado) => {
-                setData(resultado);
-            })
-            .catch((error) => {
-                setError(error.message);
-            })
-            .finally(() => {
-                setLoading(false);
-            });
+            .then(setData)
+            .catch((error) => setError(error.message))
+            .finally(() => setLoading(false));
     }, []);
+
+    // "Hola, Ana": primer nombre del perfil, o lo que está antes del @.
+    const nombre =
+        (user?.name && user.name !== user.email
+            ? user.name.split(' ')[0]
+            : user?.email.split('@')[0]) ?? '';
 
     return (
         <Page>
             <PageHeader
-                title="Dashboard"
-                description={`Resumen de hoy, ${hoyLargo}`}
+                title={nombre ? `Hola, ${nombre}` : 'Hola'}
+                description={`Así vienen las ventas · ${hoyLargo}`}
             />
 
             {error && <EstadoError mensaje={error} />}
+
+            {/* AVISO: SIN STOCK */}
+            {data && data.stock.sin_stock.length > 0 && (
+                <AvisoSinStock items={data.stock.sin_stock} />
+            )}
 
             {/* INDICADORES */}
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -119,34 +128,45 @@ export default function Dashboard() {
                 ) : (
                     <>
                         <Indicador
+                            icon={CalendarDays}
+                            titulo={`Vendido en ${mesActual}`}
+                            valor={dinero(data.mes_actual.total)}
+                            detalle={ventas(data.mes_actual.cantidad)}
+                        />
+                        <Indicador
                             icon={ShoppingCart}
                             titulo="Vendido hoy"
                             valor={dinero(data.ventas.total)}
-                            detalle={`${data.ventas.cantidad} venta${data.ventas.cantidad !== 1 ? 's' : ''}`}
+                            detalle={`${ventas(data.ventas.cantidad)} · cobrado ${dinero(data.ventas.cobrado)}`}
                         />
                         <Indicador
-                            icon={Wallet}
-                            titulo="Cobrado hoy"
-                            valor={dinero(data.ventas.cobrado)}
-                            detalle="De las ventas de hoy"
-                        />
-                        <Indicador
-                            icon={Clock}
-                            titulo="Pendiente de cobro"
-                            valor={dinero(data.ventas.pendiente)}
-                            detalle="Ventas de hoy a cuenta corriente"
-                            destacado={data.ventas.pendiente > 0}
+                            icon={TrendingUp}
+                            titulo="Total vendido"
+                            valor={dinero(data.total_general.total)}
+                            detalle={`${ventas(data.total_general.cantidad)} desde el inicio`}
                         />
                         <Indicador
                             icon={Users}
-                            titulo="Deuda total"
+                            titulo="Deuda en cuentas corrientes"
                             valor={dinero(data.cuenta_corriente.total_deuda)}
                             detalle={`${data.cuenta_corriente.clientes_con_deuda} cliente${data.cuenta_corriente.clientes_con_deuda !== 1 ? 's' : ''} con saldo`}
                             destacado={data.cuenta_corriente.total_deuda > 0}
+                            href="/cuentas-corrientes"
                         />
                     </>
                 )}
             </div>
+
+            {/* VENTAS POR MES */}
+            <Panel titulo="Ventas por mes" subtitulo="Últimos 12 meses">
+                <div className="p-5">
+                    {loading || !data ? (
+                        <Skeleton className="h-56 w-full" />
+                    ) : (
+                        <GraficoVentasMes datos={data.por_mes} />
+                    )}
+                </div>
+            </Panel>
 
             {data && (
                 <div className="grid gap-6 lg:grid-cols-3">
@@ -209,96 +229,82 @@ export default function Dashboard() {
                         )}
                     </Panel>
 
-                    <div className="flex flex-col gap-6">
-                        {/* STOCK BAJO */}
-                        <Panel
-                            titulo="Stock bajo"
-                            accion={
-                                data.stock.productos_stock_bajo > 0 && (
-                                    <Badge variant="warning">
-                                        {data.stock.productos_stock_bajo}
-                                    </Badge>
-                                )
-                            }
-                        >
-                            {data.stock.detalle.length === 0 ? (
-                                <EstadoVacio
-                                    icon={CheckCircle2}
-                                    title="Todo en orden"
-                                    description="Ningún producto está por debajo del mínimo."
-                                    className="py-8"
-                                />
-                            ) : (
-                                <ul className="divide-y">
-                                    {data.stock.detalle
-                                        .slice(0, 6)
-                                        .map((item) => (
-                                            <li
-                                                key={item.id}
-                                                className="flex items-center justify-between gap-3 px-5 py-3"
-                                            >
-                                                <span className="flex min-w-0 items-center gap-2 text-sm">
-                                                    <PackageX className="text-warning size-4 shrink-0" />
-                                                    <span className="truncate">
-                                                        {item.producto}
-                                                    </span>
-                                                </span>
-                                                <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
-                                                    {cantidad(item.cantidad)} /
-                                                    mín.{' '}
-                                                    {cantidad(
-                                                        item.stock_minimo,
-                                                    )}
-                                                </span>
-                                            </li>
-                                        ))}
-                                </ul>
-                            )}
-                        </Panel>
-
-                        {/* CLIENTES CON DEUDA */}
-                        <Panel
-                            titulo="Clientes con deuda"
-                            accion={
-                                <Link
-                                    to="/clientes"
-                                    className="text-muted-foreground hover:text-foreground text-sm font-medium"
-                                >
-                                    Ver todos
-                                </Link>
-                            }
-                        >
-                            {data.cuenta_corriente.detalle.length === 0 ? (
-                                <EstadoVacio
-                                    icon={CheckCircle2}
-                                    title="Nadie debe nada"
-                                    description="No hay saldos pendientes en cuenta corriente."
-                                    className="py-8"
-                                />
-                            ) : (
-                                <ul className="divide-y">
-                                    {data.cuenta_corriente.detalle
-                                        .slice(0, 6)
-                                        .map((cliente) => (
-                                            <li
-                                                key={cliente.id}
-                                                className="flex items-center justify-between gap-3 px-5 py-3"
-                                            >
-                                                <span className="truncate text-sm">
-                                                    {nombreCompleto(cliente)}
-                                                </span>
-                                                <span className="text-destructive shrink-0 text-sm font-medium tabular-nums">
-                                                    {dinero(cliente.saldo)}
-                                                </span>
-                                            </li>
-                                        ))}
-                                </ul>
-                            )}
-                        </Panel>
-                    </div>
+                    {/* CLIENTES CON DEUDA */}
+                    <Panel
+                        titulo="Clientes con deuda"
+                        accion={
+                            <Link
+                                to="/cuentas-corrientes"
+                                className="text-muted-foreground hover:text-foreground text-sm font-medium"
+                            >
+                                Ver todas
+                            </Link>
+                        }
+                    >
+                        {data.cuenta_corriente.detalle.length === 0 ? (
+                            <EstadoVacio
+                                icon={CheckCircle2}
+                                title="Nadie debe nada"
+                                description="No hay saldos pendientes en cuenta corriente."
+                                className="py-8"
+                            />
+                        ) : (
+                            <ul className="divide-y">
+                                {data.cuenta_corriente.detalle
+                                    .slice(0, 6)
+                                    .map((cliente) => (
+                                        <li
+                                            key={cliente.id}
+                                            className="flex items-center justify-between gap-3 px-5 py-3"
+                                        >
+                                            <span className="truncate text-sm">
+                                                {nombreCompleto(cliente)}
+                                            </span>
+                                            <span className="text-destructive shrink-0 text-sm font-medium tabular-nums">
+                                                {dinero(cliente.saldo)}
+                                            </span>
+                                        </li>
+                                    ))}
+                            </ul>
+                        )}
+                    </Panel>
                 </div>
             )}
         </Page>
+    );
+}
+
+function AvisoSinStock({ items }: { items: SinStock[] }) {
+    const visibles = items.slice(0, 5);
+
+    return (
+        <div className="border-warning/30 bg-warning-soft flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-start">
+            <PackageX className="text-warning size-5 shrink-0" />
+            <div className="min-w-0 flex-1 text-sm">
+                <p className="font-medium">
+                    {items.length === 1
+                        ? 'Hay 1 producto sin stock'
+                        : `Hay ${items.length} productos sin stock`}
+                </p>
+                <p className="text-muted-foreground mt-0.5">
+                    {visibles
+                        .map((item) =>
+                            [item.producto, item.color, item.talle]
+                                .filter(Boolean)
+                                .join(' · '),
+                        )
+                        .join(' — ')}
+                    {items.length > visibles.length &&
+                        ` y ${items.length - visibles.length} más`}
+                </p>
+            </div>
+            <Link
+                to="/productos"
+                className="text-foreground shrink-0 text-sm font-medium underline-offset-4 hover:underline"
+            >
+                Cargar stock
+            </Link>
+        </div>
     );
 }
 
@@ -308,38 +314,60 @@ function Indicador({
     valor,
     detalle,
     destacado = false,
+    href,
 }: {
     icon: LucideIcon;
     titulo: string;
     valor: string;
     detalle: string;
     destacado?: boolean;
+    href?: string;
 }) {
-    return (
-        <div className="bg-card shadow-xs rounded-xl border p-5">
-            <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-sm">{titulo}</span>
-                <span className="bg-accent text-accent-foreground flex size-8 items-center justify-center rounded-full">
+    const contenido = (
+        <>
+            <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground text-sm first-letter:uppercase">
+                    {titulo}
+                </span>
+                <span className="bg-accent text-accent-foreground flex size-8 shrink-0 items-center justify-center rounded-full">
                     <Icon className="size-4" />
                 </span>
             </div>
             <p
-                className={`mt-2 text-2xl font-semibold tabular-nums tracking-tight ${destacado ? 'text-destructive' : ''}`}
+                className={cn(
+                    'mt-2 text-2xl font-semibold tabular-nums tracking-tight',
+                    destacado && 'text-destructive',
+                )}
             >
                 {valor}
             </p>
             <p className="text-muted-foreground mt-1 text-xs">{detalle}</p>
-        </div>
+        </>
+    );
+
+    const clases = 'bg-card shadow-xs block rounded-xl border p-5';
+
+    return href ? (
+        <Link
+            to={href}
+            className={cn(clases, 'hover:bg-muted/30 transition-colors')}
+        >
+            {contenido}
+        </Link>
+    ) : (
+        <div className={clases}>{contenido}</div>
     );
 }
 
 function Panel({
     titulo,
+    subtitulo,
     accion,
     className = '',
     children,
 }: {
     titulo: string;
+    subtitulo?: string;
     accion?: ReactNode;
     className?: string;
     children: ReactNode;
@@ -349,7 +377,16 @@ function Panel({
             className={`bg-card shadow-xs overflow-hidden rounded-xl border ${className}`}
         >
             <div className="flex items-center justify-between border-b px-5 py-3.5">
-                <h2 className="font-serif text-base font-medium">{titulo}</h2>
+                <div>
+                    <h2 className="font-serif text-base font-medium">
+                        {titulo}
+                    </h2>
+                    {subtitulo && (
+                        <p className="text-muted-foreground text-xs">
+                            {subtitulo}
+                        </p>
+                    )}
+                </div>
                 {accion}
             </div>
             {children}

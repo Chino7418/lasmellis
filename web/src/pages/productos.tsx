@@ -121,7 +121,6 @@ type Catalogos = {
 type FormData = {
     categoria_id: string;
     marca_id: string;
-    codigo_interno: string;
     nombre: string;
     descripcion: string;
     costo: string;
@@ -131,7 +130,6 @@ type FormData = {
 const formVacio: FormData = {
     categoria_id: '',
     marca_id: '',
-    codigo_interno: '',
     nombre: '',
     descripcion: '',
     costo: '',
@@ -176,7 +174,6 @@ export default function Productos() {
     );
     const [guardando, setGuardando] = useState(false);
     const [escanerAbierto, setEscanerAbierto] = useState(false);
-    const [escanerFormAbierto, setEscanerFormAbierto] = useState(false);
 
     const [depositos, setDepositos] = useState<ItemCatalogo[]>([]);
 
@@ -340,15 +337,6 @@ export default function Productos() {
         buscarPorCodigoExacto(codigo);
     };
 
-    const manejarCodigoEscaneadoForm = (codigo: string) => {
-        setEscanerFormAbierto(false);
-        setFormData((actual) => ({
-            ...actual,
-            codigo_interno: codigo.trim(),
-        }));
-        toast.success('Código escaneado.');
-    };
-
     const manejarEnterBusqueda = (
         evento: React.KeyboardEvent<HTMLInputElement>,
     ) => {
@@ -376,7 +364,6 @@ export default function Productos() {
                 ? String(producto.categoria.id)
                 : '',
             marca_id: producto.marca?.id ? String(producto.marca.id) : '',
-            codigo_interno: producto.codigo_interno,
             nombre: producto.nombre,
             descripcion: producto.descripcion ?? '',
             costo: String(producto.costo),
@@ -401,7 +388,6 @@ export default function Productos() {
                 ? Number(formData.categoria_id)
                 : null,
             marca_id: formData.marca_id ? Number(formData.marca_id) : null,
-            codigo_interno: formData.codigo_interno,
             nombre: formData.nombre,
             descripcion: formData.descripcion || null,
             costo: formData.costo,
@@ -763,42 +749,17 @@ export default function Productos() {
                             />
                         </Campo>
 
-                        <Campo
-                            id="codigo_interno"
-                            label="Código interno"
-                            error={erroresForm.codigo_interno}
-                        >
-                            <div className="flex gap-2">
-                                <Input
-                                    id="codigo_interno"
-                                    className="font-mono"
-                                    value={formData.codigo_interno}
-                                    onChange={(evento) =>
-                                        setFormData((actual) => ({
-                                            ...actual,
-                                            codigo_interno: evento.target.value,
-                                        }))
-                                    }
-                                    placeholder="Escaneá o escribí"
-                                    onKeyDown={(evento) => {
-                                        // El lector físico manda Enter al final:
-                                        // no tiene que guardar el formulario.
-                                        if (evento.key === 'Enter') {
-                                            evento.preventDefault();
-                                        }
-                                    }}
-                                />
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    className="shrink-0"
-                                    onClick={() => setEscanerFormAbierto(true)}
-                                    title="Escanear con la cámara"
-                                >
-                                    <ScanLine />
-                                </Button>
-                            </div>
+                        {/* El código interno lo asigna la base (P00001, ...). */}
+                        <Campo id="codigo_interno" label="Código interno">
+                            <Input
+                                id="codigo_interno"
+                                className="font-mono"
+                                value={
+                                    editando?.codigo_interno ??
+                                    'Se asigna al guardar'
+                                }
+                                disabled
+                            />
                         </Campo>
 
                         <Campo
@@ -929,13 +890,6 @@ export default function Productos() {
                 abierto={escanerAbierto}
                 onCerrar={() => setEscanerAbierto(false)}
                 onDetectado={manejarCodigoEscaneado}
-            />
-
-            {/* ESCÁNER (CÁMARA) — FORMULARIO */}
-            <EscanerCodigoBarras
-                abierto={escanerFormAbierto}
-                onCerrar={() => setEscanerFormAbierto(false)}
-                onDetectado={manejarCodigoEscaneadoForm}
             />
 
             {/* ALTA / EDICIÓN DE VARIANTE */}

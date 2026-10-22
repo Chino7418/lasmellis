@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 import AppearanceTabs from '@/components/appearance-tabs';
+import { Campo } from '@/components/campo';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Page, PageHeader } from '@/components/page-header';
@@ -14,15 +15,44 @@ import { useTitulo } from '@/hooks/use-titulo';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
+/** Edad en años cumplidos a partir de una fecha AAAA-MM-DD. */
+function calcularEdad(fecha: string): number | null {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+        return null;
+    }
+
+    const [anio, mes, dia] = fecha.split('-').map(Number);
+    const hoy = new Date();
+    let edad = hoy.getFullYear() - anio;
+
+    if (
+        hoy.getMonth() + 1 < mes ||
+        (hoy.getMonth() + 1 === mes && hoy.getDate() < dia)
+    ) {
+        edad--;
+    }
+
+    return edad >= 0 && edad < 130 ? edad : null;
+}
+
 export default function Configuracion() {
     useTitulo('Configuración');
 
     const { user } = useAuth();
 
-    const [nombre, setNombre] = useState(
-        user?.name === user?.email ? '' : (user?.name ?? ''),
-    );
+    const [perfil, setPerfil] = useState({
+        nombre: user?.name === user?.email ? '' : (user?.name ?? ''),
+        telefono: user?.perfil.telefono ?? '',
+        direccion: user?.perfil.direccion ?? '',
+        fecha_nacimiento: user?.perfil.fecha_nacimiento ?? '',
+        documento: user?.perfil.documento ?? '',
+    });
     const [guardandoPerfil, setGuardandoPerfil] = useState(false);
+
+    const cambiarPerfil = (campo: keyof typeof perfil, valor: string) =>
+        setPerfil((actual) => ({ ...actual, [campo]: valor }));
+
+    const edad = calcularEdad(perfil.fecha_nacimiento);
 
     const [password, setPassword] = useState('');
     const [confirmacion, setConfirmacion] = useState('');
@@ -34,13 +64,19 @@ export default function Configuracion() {
         setGuardandoPerfil(true);
 
         const { error } = await supabase.auth.updateUser({
-            data: { name: nombre.trim() },
+            data: {
+                name: perfil.nombre.trim(),
+                telefono: perfil.telefono.trim(),
+                direccion: perfil.direccion.trim(),
+                fecha_nacimiento: perfil.fecha_nacimiento,
+                documento: perfil.documento.trim(),
+            },
         });
 
         setGuardandoPerfil(false);
 
         if (error) {
-            toast.error('No se pudo guardar el nombre.');
+            toast.error('No se pudo guardar el perfil.');
 
             return;
         }
@@ -96,24 +132,111 @@ export default function Configuracion() {
                     <Heading
                         variant="small"
                         title="Perfil"
-                        description="El nombre que se muestra en el menú"
+                        description="Tus datos. El nombre es el que aparece en el saludo y en el menú."
                     />
 
-                    <div className="grid gap-2">
-                        <Label htmlFor="email">Email</Label>
-                        <Input id="email" value={user?.email ?? ''} disabled />
-                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <Campo
+                            id="email"
+                            label="Email"
+                            className="sm:col-span-2"
+                        >
+                            <Input
+                                id="email"
+                                value={user?.email ?? ''}
+                                disabled
+                            />
+                        </Campo>
 
-                    <div className="grid gap-2">
-                        <Label htmlFor="nombre">Nombre</Label>
-                        <Input
+                        <Campo
                             id="nombre"
-                            value={nombre}
-                            onChange={(evento) =>
-                                setNombre(evento.target.value)
-                            }
-                            autoComplete="name"
-                        />
+                            label="Nombre"
+                            className="sm:col-span-2"
+                        >
+                            <Input
+                                id="nombre"
+                                value={perfil.nombre}
+                                onChange={(evento) =>
+                                    cambiarPerfil('nombre', evento.target.value)
+                                }
+                                autoComplete="name"
+                            />
+                        </Campo>
+
+                        <Campo id="telefono" label="Teléfono" opcional>
+                            <Input
+                                id="telefono"
+                                type="tel"
+                                value={perfil.telefono}
+                                onChange={(evento) =>
+                                    cambiarPerfil(
+                                        'telefono',
+                                        evento.target.value,
+                                    )
+                                }
+                                autoComplete="tel"
+                            />
+                        </Campo>
+
+                        <Campo id="documento" label="DNI" opcional>
+                            <Input
+                                id="documento"
+                                inputMode="numeric"
+                                value={perfil.documento}
+                                onChange={(evento) =>
+                                    cambiarPerfil(
+                                        'documento',
+                                        evento.target.value,
+                                    )
+                                }
+                            />
+                        </Campo>
+
+                        <Campo
+                            id="direccion"
+                            label="Dirección"
+                            opcional
+                            className="sm:col-span-2"
+                        >
+                            <Input
+                                id="direccion"
+                                value={perfil.direccion}
+                                onChange={(evento) =>
+                                    cambiarPerfil(
+                                        'direccion',
+                                        evento.target.value,
+                                    )
+                                }
+                                autoComplete="street-address"
+                            />
+                        </Campo>
+
+                        <Campo
+                            id="fecha_nacimiento"
+                            label="Fecha de nacimiento"
+                            opcional
+                        >
+                            <Input
+                                id="fecha_nacimiento"
+                                type="date"
+                                value={perfil.fecha_nacimiento}
+                                onChange={(evento) =>
+                                    cambiarPerfil(
+                                        'fecha_nacimiento',
+                                        evento.target.value,
+                                    )
+                                }
+                                autoComplete="bday"
+                            />
+                        </Campo>
+
+                        <Campo id="edad" label="Edad">
+                            <Input
+                                id="edad"
+                                value={edad === null ? '—' : `${edad} años`}
+                                disabled
+                            />
+                        </Campo>
                     </div>
 
                     <Button type="submit" disabled={guardandoPerfil}>

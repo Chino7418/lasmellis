@@ -11,6 +11,7 @@ import OlvideMiClave from '@/pages/auth/olvide-mi-clave';
 import RestablecerClave from '@/pages/auth/restablecer-clave';
 import Clientes from '@/pages/clientes';
 import Configuracion from '@/pages/configuracion';
+import CuentasCorrientes from '@/pages/cuentas-corrientes';
 import Dashboard from '@/pages/dashboard';
 import Productos from '@/pages/productos';
 import Ventas from '@/pages/ventas';
@@ -30,6 +31,7 @@ const router = createBrowserRouter([
             { path: '/productos', element: <Productos /> },
             { path: '/ventas', element: <Ventas /> },
             { path: '/clientes', element: <Clientes /> },
+            { path: '/cuentas-corrientes', element: <CuentasCorrientes /> },
             { path: '/configuracion', element: <Configuracion /> },
         ],
     },

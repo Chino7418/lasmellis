@@ -23,12 +23,19 @@ function usuarioDesdeSesion(session: Session | null): User | null {
 
     const { user } = session;
     const email = user.email ?? '';
+    const datos = user.user_metadata ?? {};
 
     return {
         id: user.id,
         email,
-        name: (user.user_metadata?.name as string | undefined) || email,
-        avatar: user.user_metadata?.avatar_url as string | undefined,
+        name: (datos.name as string | undefined) || email,
+        avatar: datos.avatar_url as string | undefined,
+        perfil: {
+            telefono: datos.telefono,
+            direccion: datos.direccion,
+            fecha_nacimiento: datos.fecha_nacimiento,
+            documento: datos.documento,
+        },
     };
 }
 
