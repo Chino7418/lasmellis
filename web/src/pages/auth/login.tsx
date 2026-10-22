@@ -12,6 +12,15 @@ import AuthLayout from '@/layouts/auth-layout';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
+const MENSAJES_LOGIN: Record<string, string> = {
+    invalid_credentials: 'El email o la contraseña son incorrectos.',
+    email_not_confirmed:
+        'Tu email todavía no está confirmado. Revisá tu correo o pedí que te confirmen la cuenta.',
+    over_request_rate_limit:
+        'Hubo demasiados intentos. Esperá unos minutos y probá de nuevo.',
+    user_banned: 'Tu usuario está bloqueado.',
+};
+
 export default function Login() {
     useTitulo('Iniciar sesión');
 
@@ -43,10 +52,12 @@ export default function Login() {
         setProcesando(false);
 
         if (error) {
+            // Se muestra el motivo real para poder diagnosticar problemas;
+            // los casos conocidos se traducen.
+            console.error('Error de login:', error);
             setError(
-                error.message === 'Invalid login credentials'
-                    ? 'El email o la contraseña son incorrectos.'
-                    : 'No se pudo iniciar sesión. Probá de nuevo.',
+                MENSAJES_LOGIN[error.code ?? ''] ??
+                    `No se pudo iniciar sesión (${error.code ?? error.status ?? 'sin código'}: ${error.message}).`,
             );
             setPassword('');
 
