@@ -559,7 +559,16 @@ function DetalleCuenta({
                         onSubmit={registrarPago}
                         className="grid gap-3 rounded-lg border p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
                     >
-                        <Campo id="monto-pago" label="Monto que paga">
+                        <div className="sm:col-span-3">
+                            <p className="text-sm font-medium">
+                                Registrar pago
+                            </p>
+                            <p className="text-muted-foreground text-xs">
+                                Si paga todo, el saldo queda en cero.
+                            </p>
+                        </div>
+
+                        <Campo id="monto-pago" label="Monto">
                             <Input
                                 id="monto-pago"
                                 type="number"
@@ -592,7 +601,7 @@ function DetalleCuenta({
                         </Campo>
 
                         <Button type="submit" disabled={pagando}>
-                            {pagando ? 'Registrando...' : 'Registrar pago'}
+                            {pagando ? 'Registrando...' : 'Confirmar pago'}
                         </Button>
 
                         <Campo
