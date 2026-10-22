@@ -12,11 +12,15 @@ import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { EstadoError, EstadoVacio } from '@/components/estados';
-import { GraficoVentasMes } from '@/components/grafico-ventas-mes';
+import {
+    GraficoVentasMes,
+    MESES_EN_CELU,
+} from '@/components/grafico-ventas-mes';
 import type { VentasMes } from '@/components/grafico-ventas-mes';
 import { Page, PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useTitulo } from '@/hooks/use-titulo';
 import { obtenerDashboard } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -81,6 +85,7 @@ export default function Dashboard() {
     useTitulo('Dashboard');
 
     const { user } = useAuth();
+    const esCelu = useIsMobile();
     const [data, setData] = useState<DashboardData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -158,7 +163,10 @@ export default function Dashboard() {
             </div>
 
             {/* VENTAS POR MES */}
-            <Panel titulo="Ventas por mes" subtitulo="Últimos 12 meses">
+            <Panel
+                titulo="Ventas por mes"
+                subtitulo={`Últimos ${esCelu ? MESES_EN_CELU : 12} meses`}
+            >
                 <div className="p-5">
                     {loading || !data ? (
                         <Skeleton className="h-56 w-full" />

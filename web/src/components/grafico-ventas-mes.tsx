@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 
 export type VentasMes = {
@@ -9,6 +10,7 @@ export type VentasMes = {
 };
 
 const ALTO_PX = 200;
+export const MESES_EN_CELU = 6;
 
 const nombreMes = new Intl.DateTimeFormat('es-AR', { month: 'short' });
 const nombreMesLargo = new Intl.DateTimeFormat('es-AR', {
@@ -56,8 +58,12 @@ function topeRedondo(valor: number): number {
  * (o el foco del teclado) sobre un mes muestra el detalle; la tabla
  * oculta deja los datos disponibles para lectores de pantalla.
  */
-export function GraficoVentasMes({ datos }: { datos: VentasMes[] }) {
+export function GraficoVentasMes({ datos: todos }: { datos: VentasMes[] }) {
     const [activo, setActivo] = useState<number | null>(null);
+
+    // En el celu, vista compacta: solo los últimos meses.
+    const esCelu = useIsMobile();
+    const datos = esCelu ? todos.slice(-MESES_EN_CELU) : todos;
 
     const maximo = Math.max(...datos.map((d) => d.total), 0);
     const tope = topeRedondo(maximo);
@@ -194,7 +200,6 @@ export function GraficoVentasMes({ datos }: { datos: VentasMes[] }) {
             </div>
 
             {/* EJE X */}
-            {/* En el celu no entran 12 etiquetas: va un mes sí y uno no, siempre con el actual. */}
             <div
                 className="ml-[3.75rem] mt-2 flex gap-0.5 sm:ml-[4.25rem]"
                 aria-hidden="true"
@@ -202,13 +207,6 @@ export function GraficoVentasMes({ datos }: { datos: VentasMes[] }) {
                 {datos.map((dato, i) => {
                     const fecha = fechaDe(dato.mes);
                     const conAnio = i === 0 || fecha.getMonth() === 0;
-                    const visibleEnCelu = (ultimo - i) % 2 === 0;
-                    // El año va en el primer mes visible de cada año.
-                    const conAnioEnCelu =
-                        visibleEnCelu &&
-                        (i < 2 ||
-                            fechaDe(datos[i - 2].mes).getFullYear() !==
-                                fecha.getFullYear());
 
                     return (
                         <span
@@ -216,18 +214,11 @@ export function GraficoVentasMes({ datos }: { datos: VentasMes[] }) {
                             className={cn(
                                 'text-muted-foreground min-w-0 flex-1 whitespace-nowrap text-center text-[11px] capitalize',
                                 i === ultimo && 'text-foreground font-medium',
-                                !visibleEnCelu && 'max-sm:invisible',
                             )}
                         >
                             {nombreMes.format(fecha).replace('.', '')}
-                            {(conAnio || conAnioEnCelu) && (
-                                <span
-                                    className={cn(
-                                        'block text-[10px]',
-                                        !conAnio && 'sm:hidden',
-                                        !conAnioEnCelu && 'max-sm:hidden',
-                                    )}
-                                >
+                            {conAnio && (
+                                <span className="block text-[10px]">
                                     {fecha.getFullYear()}
                                 </span>
                             )}
@@ -238,7 +229,7 @@ export function GraficoVentasMes({ datos }: { datos: VentasMes[] }) {
 
             {/* Datos en tabla para lectores de pantalla */}
             <table className="sr-only">
-                <caption>Ventas por mes, últimos 12 meses</caption>
+                <caption>Ventas por mes, últimos {datos.length} meses</caption>
                 <thead>
                     <tr>
                         <th>Mes</th>
