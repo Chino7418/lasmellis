@@ -1,4 +1,10 @@
-import { BookUser, MessageCircle, Search, Wallet } from 'lucide-react';
+import {
+    BookUser,
+    MessageCircle,
+    NotebookPen,
+    Search,
+    Wallet,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { toast } from 'sonner';
@@ -25,6 +31,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTitulo } from '@/hooks/use-titulo';
 import {
+    cargarSaldoAnterior,
     estadoDeCuenta,
     listarClientes,
     pagarCuentaCorriente,
@@ -48,6 +55,13 @@ const MEDIOS_PAGO = [
     { value: 'tarjeta_debito', label: 'Tarjeta de débito' },
     { value: 'tarjeta_credito', label: 'Tarjeta de crédito' },
 ];
+
+/** Fecha de hoy en Argentina, AAAA-MM-DD (para inputs de fecha). */
+function hoyEnArgentina(): string {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+    }).format(new Date());
+}
 
 /** Link de WhatsApp con un recordatorio de saldo (Argentina por defecto). */
 function linkRecordatorio(cliente: Cliente, saldo: number): string | null {
@@ -178,7 +192,7 @@ export default function CuentasCorrientes() {
                         }
                         description={
                             soloDeudores && !busqueda
-                                ? 'Cuando una venta quede total o parcialmente sin pagar, el cliente va a aparecer acá.'
+                                ? 'Cuando una venta quede sin pagar, el cliente va a aparecer acá. Para cargar una deuda que ya traía, entrá en "Todos" y elegí al cliente.'
                                 : 'Probá con otro nombre, documento o teléfono.'
                         }
                     />
@@ -295,6 +309,12 @@ function DetalleCuenta({
     const [observaciones, setObservaciones] = useState('');
     const [pagando, setPagando] = useState(false);
 
+    const [conSaldoAnterior, setConSaldoAnterior] = useState(false);
+    const [montoAnterior, setMontoAnterior] = useState('');
+    const [fechaAnterior, setFechaAnterior] = useState(hoyEnArgentina);
+    const [notaAnterior, setNotaAnterior] = useState('');
+    const [guardandoAnterior, setGuardandoAnterior] = useState(false);
+
     const cargar = () =>
         estadoDeCuenta(cliente.id)
             .then((estado) => {
@@ -372,6 +392,35 @@ function DetalleCuenta({
         }
     };
 
+    const guardarSaldoAnterior = async (evento: FormEvent) => {
+        evento.preventDefault();
+        setGuardandoAnterior(true);
+
+        try {
+            await cargarSaldoAnterior(
+                cliente.id,
+                Number(montoAnterior),
+                fechaAnterior,
+                notaAnterior,
+            );
+
+            toast.success('Saldo anterior cargado.');
+            setConSaldoAnterior(false);
+            setMontoAnterior('');
+            setNotaAnterior('');
+            await cargar();
+            onPago();
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : 'No se pudo cargar el saldo anterior.',
+            );
+        } finally {
+            setGuardandoAnterior(false);
+        }
+    };
+
     const whatsapp = saldo > 0 ? linkRecordatorio(cliente, saldo) : null;
 
     return (
@@ -400,19 +449,109 @@ function DetalleCuenta({
                         </p>
                     </div>
 
-                    {whatsapp && (
-                        <Button asChild variant="outline" size="sm">
-                            <a
-                                href={whatsapp}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                    <div className="flex flex-wrap gap-2">
+                        {!conSaldoAnterior && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setConSaldoAnterior(true)}
                             >
-                                <MessageCircle />
-                                Recordar por WhatsApp
-                            </a>
-                        </Button>
-                    )}
+                                <NotebookPen />
+                                Cargar saldo anterior
+                            </Button>
+                        )}
+
+                        {whatsapp && (
+                            <Button asChild variant="outline" size="sm">
+                                <a
+                                    href={whatsapp}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    <MessageCircle />
+                                    Recordar por WhatsApp
+                                </a>
+                            </Button>
+                        )}
+                    </div>
                 </div>
+
+                {/* SALDO ANTERIOR: deuda que ya traía antes de la app */}
+                {conSaldoAnterior && (
+                    <form
+                        onSubmit={guardarSaldoAnterior}
+                        className="grid gap-3 rounded-lg border p-4 sm:grid-cols-2"
+                    >
+                        <div className="sm:col-span-2">
+                            <p className="text-sm font-medium">
+                                Saldo anterior
+                            </p>
+                            <p className="text-muted-foreground text-xs">
+                                Lo que ya debía antes de usar la app. Se suma a
+                                su saldo; no toca stock ni ventas.
+                            </p>
+                        </div>
+
+                        <Campo id="monto-anterior" label="Monto que debe">
+                            <Input
+                                id="monto-anterior"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                inputMode="decimal"
+                                value={montoAnterior}
+                                onChange={(evento) =>
+                                    setMontoAnterior(evento.target.value)
+                                }
+                                autoFocus
+                            />
+                        </Campo>
+
+                        <Campo id="fecha-anterior" label="Desde cuándo">
+                            <Input
+                                id="fecha-anterior"
+                                type="date"
+                                max={hoyEnArgentina()}
+                                value={fechaAnterior}
+                                onChange={(evento) =>
+                                    setFechaAnterior(evento.target.value)
+                                }
+                            />
+                        </Campo>
+
+                        <Campo
+                            id="nota-anterior"
+                            label="Nota"
+                            opcional
+                            className="sm:col-span-2"
+                        >
+                            <Input
+                                id="nota-anterior"
+                                value={notaAnterior}
+                                onChange={(evento) =>
+                                    setNotaAnterior(evento.target.value)
+                                }
+                                placeholder="Ej.: deuda del cuaderno"
+                                maxLength={200}
+                            />
+                        </Campo>
+
+                        <div className="flex gap-2 sm:col-span-2 sm:justify-end">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => setConSaldoAnterior(false)}
+                            >
+                                Cancelar
+                            </Button>
+                            <Button type="submit" disabled={guardandoAnterior}>
+                                {guardandoAnterior
+                                    ? 'Guardando...'
+                                    : 'Cargar saldo'}
+                            </Button>
+                        </div>
+                    </form>
+                )}
 
                 {/* REGISTRAR PAGO */}
                 {saldo > 0 && (

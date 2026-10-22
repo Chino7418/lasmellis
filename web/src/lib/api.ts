@@ -553,6 +553,39 @@ export async function pagarCuentaCorriente(
     };
 }
 
+/**
+ * Deuda que el cliente ya traía antes de usar la app (el cuaderno).
+ * Es un movimiento "debe" sin venta: no toca stock ni las ventas.
+ * La fecha (AAAA-MM-DD) se guarda al mediodía de Argentina, en UTC.
+ */
+export async function cargarSaldoAnterior(
+    clienteId: number,
+    monto: number,
+    fecha: string,
+    nota?: string | null,
+) {
+    if (!(monto > 0) || monto >= 10_000_000_000) {
+        throw new Error('Ingresá un monto mayor a cero.');
+    }
+
+    const ahora = new Date().toISOString().slice(0, 19);
+    const notaLimpia = nota?.trim().slice(0, 200) || null;
+
+    const { error } = await supabase.from('movimientos_cuenta_corriente').insert({
+        cliente_id: clienteId,
+        tipo: 'debe',
+        importe: Math.round(monto * 100) / 100,
+        fecha: /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? `${fecha}T15:00:00` : ahora,
+        concepto: notaLimpia ? `Saldo anterior · ${notaLimpia}` : 'Saldo anterior',
+        created_at: ahora,
+        updated_at: ahora,
+    });
+
+    if (error) {
+        fallar(error, 'No se pudo cargar el saldo anterior.');
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* DEPÓSITOS                                                          */
 /* ------------------------------------------------------------------ */
