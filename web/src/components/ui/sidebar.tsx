@@ -1,7 +1,7 @@
 import { Slot } from "@radix-ui/react-slot"
 import type { VariantProps} from "class-variance-authority";
 import { cva } from "class-variance-authority"
-import { IconoBikini } from "@/components/icono-bikini"
+import { MenuIcon } from "lucide-react"
 import * as React from "react"
 
 import { Button } from "@/components/ui/button"
@@ -266,7 +266,7 @@ function SidebarTrigger({
       }}
       {...props}
     >
-      <IconoBikini className="size-6" />
+      <MenuIcon className="size-5" />
       <span className="sr-only">Abrir o cerrar el menú</span>
     </Button>
   )
