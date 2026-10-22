@@ -1,0 +1,166 @@
+@import 'tailwindcss';
+
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+    --font-sans:
+        'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
+        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+        'Noto Color Emoji';
+
+    /* Serif de alto contraste, en sintonía con el logo. Solo para títulos. */
+    --font-serif: 'Playfair Display', ui-serif, Georgia, serif;
+
+    --radius-lg: var(--radius);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-sm: calc(var(--radius) - 4px);
+
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-destructive-soft: var(--destructive-soft);
+
+    --color-success: var(--success);
+    --color-success-soft: var(--success-soft);
+
+    --color-warning: var(--warning);
+    --color-warning-soft: var(--warning-soft);
+
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/*
+ * Paleta Las Mellis, tomada del logo: lila del fondo, ciruela casi negro
+ * de las letras. Los grises tienen un toque lila (matiz 310) para que
+ * todo se sienta de la misma familia. Rosa, salvia y miel comunican
+ * estado (deuda/error, éxito, atención).
+ */
+:root {
+    --background: oklch(0.982 0.006 310);
+    --foreground: oklch(0.24 0.035 310);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.24 0.035 310);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.24 0.035 310);
+    --primary: oklch(0.34 0.08 315);
+    --primary-foreground: oklch(0.985 0.006 310);
+    --secondary: oklch(0.95 0.022 310);
+    --secondary-foreground: oklch(0.34 0.08 315);
+    --muted: oklch(0.96 0.012 310);
+    --muted-foreground: oklch(0.52 0.03 310);
+    --accent: oklch(0.94 0.03 310);
+    --accent-foreground: oklch(0.34 0.08 315);
+    --destructive: oklch(0.58 0.17 5);
+    --destructive-foreground: oklch(0.985 0 0);
+    --destructive-soft: oklch(0.96 0.025 5);
+    --success: oklch(0.52 0.09 160);
+    --success-soft: oklch(0.96 0.025 160);
+    --warning: oklch(0.58 0.12 65);
+    --warning-soft: oklch(0.965 0.035 80);
+    --border: oklch(0.915 0.018 310);
+    --input: oklch(0.89 0.022 310);
+    --ring: oklch(0.7 0.08 310);
+    --chart-1: oklch(0.34 0.08 315);
+    --chart-2: oklch(0.55 0.1 315);
+    --chart-3: oklch(0.7 0.08 310);
+    --chart-4: oklch(0.8 0.06 350);
+    --chart-5: oklch(0.88 0.04 310);
+    --radius: 0.875rem;
+    --sidebar: oklch(0.945 0.028 312);
+    --sidebar-foreground: oklch(0.24 0.035 310);
+    --sidebar-primary: oklch(0.34 0.08 315);
+    --sidebar-primary-foreground: oklch(0.985 0.006 310);
+    --sidebar-accent: oklch(0.9 0.045 312);
+    --sidebar-accent-foreground: oklch(0.28 0.07 315);
+    --sidebar-border: oklch(0.89 0.03 312);
+    --sidebar-ring: oklch(0.7 0.08 310);
+}
+
+.dark {
+    --background: oklch(0.17 0.02 310);
+    --foreground: oklch(0.95 0.012 310);
+    --card: oklch(0.21 0.025 310);
+    --card-foreground: oklch(0.95 0.012 310);
+    --popover: oklch(0.22 0.025 310);
+    --popover-foreground: oklch(0.95 0.012 310);
+    --primary: oklch(0.84 0.07 310);
+    --primary-foreground: oklch(0.22 0.05 315);
+    --secondary: oklch(0.28 0.035 310);
+    --secondary-foreground: oklch(0.95 0.012 310);
+    --muted: oklch(0.26 0.025 310);
+    --muted-foreground: oklch(0.72 0.03 310);
+    --accent: oklch(0.29 0.045 310);
+    --accent-foreground: oklch(0.92 0.03 310);
+    --destructive: oklch(0.72 0.14 5);
+    --destructive-foreground: oklch(0.985 0 0);
+    --destructive-soft: oklch(0.72 0.14 5 / 15%);
+    --success: oklch(0.76 0.1 160);
+    --success-soft: oklch(0.76 0.1 160 / 15%);
+    --warning: oklch(0.82 0.11 80);
+    --warning-soft: oklch(0.82 0.11 80 / 15%);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.65 0.08 310);
+    --chart-1: oklch(0.84 0.07 310);
+    --chart-2: oklch(0.7 0.09 315);
+    --chart-3: oklch(0.58 0.08 310);
+    --chart-4: oklch(0.75 0.07 350);
+    --chart-5: oklch(0.45 0.05 310);
+    --sidebar: oklch(0.14 0.02 310);
+    --sidebar-foreground: oklch(0.95 0.012 310);
+    --sidebar-primary: oklch(0.84 0.07 310);
+    --sidebar-primary-foreground: oklch(0.22 0.05 315);
+    --sidebar-accent: oklch(0.27 0.045 312);
+    --sidebar-accent-foreground: oklch(0.95 0.012 310);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.65 0.08 310);
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply bg-background text-foreground;
+    }
+}

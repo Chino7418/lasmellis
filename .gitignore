@@ -1,0 +1,11 @@
+# El repositorio incluye solo la app nueva (React + Supabase).
+# El backend viejo de Laravel queda fuera: se ignora todo y se habilita
+# explícitamente lo que se sube.
+/*
+!/.gitignore
+!/MIGRACION.md
+!/web/
+!/supabase/
+
+# Dentro de web/ rigen además las reglas de web/.gitignore
+# (node_modules, dist, .env*, .vercel).
