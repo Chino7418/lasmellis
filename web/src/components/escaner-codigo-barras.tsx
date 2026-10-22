@@ -1,5 +1,7 @@
+import { Flashlight, SwitchCamera } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import wasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url';
+import { Button } from '@/components/ui/button';
 import {
     Dialog,
     DialogContent,
@@ -16,8 +18,14 @@ import {
  * librería barcode-detector, que corre ZXing-C++ compilado a
  * WebAssembly y es muy buena leyendo códigos lineales.
  *
- * Se pide la cámara trasera en alta resolución y con enfoque continuo:
- * las rayitas de un código de barras necesitan mucha definición.
+ * Lo que más influye en que lea es que la imagen esté NÍTIDA. Por eso:
+ * - se pide alta resolución y enfoque continuo;
+ * - se puede cambiar de cámara (en celulares con varias cámaras
+ *   traseras el navegador suele elegir la gran angular, que no enfoca
+ *   de cerca);
+ * - se aplica zoom 2x cuando el celular lo permite, para poder alejar
+ *   el celular del código y que la cámara enfoque;
+ * - se puede prender la linterna.
  */
 
 /** Formatos de códigos de productos. */
@@ -33,6 +41,8 @@ const FORMATOS = [
 ] as const;
 
 const CADA_MS = 120;
+const ZOOM_INICIAL = 2;
+const CLAVE_CAMARA = 'escaner-camara';
 
 type CodigoDetectado = { rawValue: string };
 type Detector = {
@@ -42,6 +52,14 @@ type ConstructorDetector = {
     new (opciones?: { formats: string[] }): Detector;
     getSupportedFormats: () => Promise<string[]>;
 };
+
+/* Capacidades de cámara que no están en los tipos de TypeScript. */
+type Capacidades = MediaTrackCapabilities & {
+    zoom?: { min: number; max: number; step?: number };
+    torch?: boolean;
+    focusMode?: string[];
+};
+type Ajustes = MediaTrackConstraintSet & { zoom?: number; torch?: boolean };
 
 /** Traduce los errores de getUserMedia a algo accionable. */
 function mensajeDeError(error: unknown): string {
@@ -62,11 +80,13 @@ function mensajeDeError(error: unknown): string {
     }
 }
 
-async function abrirCamara(): Promise<MediaStream> {
+async function abrirCamara(deviceId: string | null): Promise<MediaStream> {
     const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
-            facingMode: { ideal: 'environment' },
+            ...(deviceId
+                ? { deviceId: { exact: deviceId } }
+                : { facingMode: { ideal: 'environment' } }),
             width: { ideal: 1920 },
             height: { ideal: 1080 },
         },
@@ -88,9 +108,18 @@ async function abrirCamara(): Promise<MediaStream> {
 }
 
 /**
- * Devuelve un detector y qué motor usa: el nativo del navegador si
+ * Crea el detector una sola vez por sesión: el nativo del navegador si
  * existe y soporta los formatos, o el de ZXing-C++ (WebAssembly).
  */
+let detectorCompartido: Promise<{ detector: Detector; motor: string }> | null =
+    null;
+
+function obtenerDetector() {
+    detectorCompartido ??= crearDetector();
+
+    return detectorCompartido;
+}
+
 async function crearDetector(): Promise<{ detector: Detector; motor: string }> {
     const Nativo = (
         window as unknown as { BarcodeDetector?: ConstructorDetector }
@@ -143,8 +172,43 @@ export default function EscanerCodigoBarras({
     // vuelve a ejecutar cuando el <video> efectivamente existe.
     const [video, setVideo] = useState<HTMLVideoElement | null>(null);
     const onDetectadoRef = useRef(onDetectado);
+    const pistaRef = useRef<MediaStreamTrack | null>(null);
+
     const [errorCamara, setErrorCamara] = useState<string | null>(null);
     const [diagnostico, setDiagnostico] = useState('');
+
+    // null = la cámara trasera que elija el navegador. Se recuerda la
+    // última elegida en este dispositivo.
+    const [deviceId, setDeviceIdEstado] = useState<string | null>(() => {
+        try {
+            return localStorage.getItem(CLAVE_CAMARA);
+        } catch {
+            return null;
+        }
+    });
+
+    const setDeviceId = (id: string | null) => {
+        setDeviceIdEstado(id);
+
+        try {
+            if (id) {
+                localStorage.setItem(CLAVE_CAMARA, id);
+            } else {
+                localStorage.removeItem(CLAVE_CAMARA);
+            }
+        } catch {
+            // Sin almacenamiento: solo dura mientras la página esté abierta.
+        }
+    };
+    const [camaras, setCamaras] = useState<MediaDeviceInfo[]>([]);
+    const [camaraActual, setCamaraActual] = useState('');
+
+    const [zoomRango, setZoomRango] = useState<Capacidades['zoom'] | null>(
+        null,
+    );
+    const [zoom, setZoom] = useState(1);
+    const [tieneLinterna, setTieneLinterna] = useState(false);
+    const [linterna, setLinterna] = useState(false);
 
     useEffect(() => {
         onDetectadoRef.current = onDetectado;
@@ -161,6 +225,7 @@ export default function EscanerCodigoBarras({
 
         setErrorCamara(null);
         setDiagnostico('Abriendo la cámara…');
+        setLinterna(false);
 
         // Sin mediaDevices no hay cámara posible: pasa en http (no https)
         // y en navegadores internos de apps como Instagram o WhatsApp.
@@ -173,18 +238,59 @@ export default function EscanerCodigoBarras({
         }
 
         const iniciar = async () => {
-            stream = await abrirCamara();
+            stream = await abrirCamara(deviceId);
 
             if (cancelado) {
                 return;
             }
 
+            const [pista] = stream.getVideoTracks();
+            pistaRef.current = pista;
+
             video.srcObject = stream;
             await video.play();
 
+            // Las etiquetas de las cámaras recién se conocen después de
+            // dar permiso.
+            const dispositivos =
+                await navigator.mediaDevices.enumerateDevices();
+            setCamaras(dispositivos.filter((d) => d.kind === 'videoinput'));
+            setCamaraActual(pista.getSettings().deviceId ?? '');
+
+            // Zoom y linterna, si el celular los soporta.
+            const capacidades = (pista.getCapabilities?.() ??
+                {}) as Capacidades;
+            const rango =
+                capacidades.zoom && capacidades.zoom.max > capacidades.zoom.min
+                    ? capacidades.zoom
+                    : null;
+
+            setZoomRango(rango);
+            setTieneLinterna(capacidades.torch === true);
+
+            if (rango) {
+                const inicial = Math.min(
+                    rango.max,
+                    Math.max(rango.min, ZOOM_INICIAL),
+                );
+
+                try {
+                    await pista.applyConstraints({
+                        advanced: [{ zoom: inicial } as Ajustes],
+                    });
+                    setZoom(inicial);
+                } catch {
+                    setZoom(rango.min);
+                }
+            }
+
+            const enfoque = capacidades.focusMode?.includes('continuous')
+                ? 'enfoque automático'
+                : 'sin enfoque automático';
+
             setDiagnostico('Cargando el lector…');
 
-            const { detector, motor } = await crearDetector();
+            const { detector, motor } = await obtenerDetector();
 
             let intentos = 0;
             let ultimoError = '';
@@ -220,7 +326,16 @@ export default function EscanerCodigoBarras({
                     }
 
                     setDiagnostico(
-                        `Lector ${motor} · ${video.videoWidth}×${video.videoHeight} · ${intentos} lecturas${ultimoError ? ` · error: ${ultimoError}` : ''}`,
+                        [
+                            `Lector ${motor}`,
+                            `${video.videoWidth}×${video.videoHeight}`,
+                            pista.label || 'cámara',
+                            enfoque,
+                            `${intentos} lecturas`,
+                            ultimoError && `error: ${ultimoError}`,
+                        ]
+                            .filter(Boolean)
+                            .join(' · '),
                     );
                 }
 
@@ -233,18 +348,62 @@ export default function EscanerCodigoBarras({
         iniciar().catch((error: unknown) => {
             console.error('Error del escáner:', error);
 
-            if (!cancelado) {
-                setErrorCamara(mensajeDeError(error));
+            if (cancelado) {
+                return;
             }
+
+            // La cámara recordada ya no existe: se vuelve a la predeterminada.
+            const nombre = error instanceof Error ? error.name : '';
+
+            if (
+                deviceId &&
+                (nombre === 'OverconstrainedError' ||
+                    nombre === 'NotFoundError')
+            ) {
+                setDeviceId(null);
+
+                return;
+            }
+
+            setErrorCamara(mensajeDeError(error));
         });
 
         return () => {
             cancelado = true;
             clearTimeout(temporizador);
             stream?.getTracks().forEach((pista) => pista.stop());
+            pistaRef.current = null;
             video.srcObject = null;
         };
-    }, [abierto, video]);
+    }, [abierto, video, deviceId]);
+
+    const cambiarCamara = () => {
+        if (camaras.length < 2) {
+            return;
+        }
+
+        const actual = camaras.findIndex((c) => c.deviceId === camaraActual);
+        setDeviceId(camaras[(actual + 1) % camaras.length].deviceId);
+    };
+
+    const cambiarZoom = (valor: number) => {
+        setZoom(valor);
+        void pistaRef.current
+            ?.applyConstraints({ advanced: [{ zoom: valor } as Ajustes] })
+            .catch(() => undefined);
+    };
+
+    const alternarLinterna = () => {
+        const encendida = !linterna;
+
+        setLinterna(encendida);
+        void pistaRef.current
+            ?.applyConstraints({ advanced: [{ torch: encendida } as Ajustes] })
+            .catch(() => setLinterna(false));
+    };
+
+    const numeroCamara =
+        camaras.findIndex((c) => c.deviceId === camaraActual) + 1;
 
     return (
         <Dialog open={abierto} onOpenChange={(valor) => !valor && onCerrar()}>
@@ -252,8 +411,9 @@ export default function EscanerCodigoBarras({
                 <DialogHeader>
                     <DialogTitle>Escanear código de barras</DialogTitle>
                     <DialogDescription>
-                        Poné el código dentro del recuadro, que ocupe casi todo
-                        el ancho, y mantené el celular quieto unos segundos.
+                        Poné el código dentro del recuadro, a unos 15–20 cm, y
+                        mantené el celular quieto. Si se ve borroso, probá otra
+                        cámara.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -264,7 +424,7 @@ export default function EscanerCodigoBarras({
                 {/* El video está siempre montado (aunque oculto si hubo
                     error) para que al reabrir el escáner se vuelva a
                     intentar sin recargar la página. */}
-                <div className={errorCamara ? 'hidden' : 'space-y-2'}>
+                <div className={errorCamara ? 'hidden' : 'space-y-3'}>
                     <div className="relative overflow-hidden rounded-lg border bg-black">
                         <video
                             ref={setVideo}
@@ -280,6 +440,52 @@ export default function EscanerCodigoBarras({
                                 <div className="absolute inset-x-2 top-1/2 h-0.5 -translate-y-1/2 bg-red-500/80" />
                             </div>
                         </div>
+                    </div>
+
+                    {/* CONTROLES DE CÁMARA */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        {camaras.length > 1 && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={cambiarCamara}
+                            >
+                                <SwitchCamera />
+                                Cámara {numeroCamara || 1} de {camaras.length}
+                            </Button>
+                        )}
+
+                        {tieneLinterna && (
+                            <Button
+                                type="button"
+                                variant={linterna ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={alternarLinterna}
+                            >
+                                <Flashlight />
+                                Linterna
+                            </Button>
+                        )}
+
+                        {zoomRango && (
+                            <label className="flex min-w-40 flex-1 items-center gap-2 text-sm">
+                                <span className="text-muted-foreground shrink-0">
+                                    Zoom {zoom.toFixed(1)}x
+                                </span>
+                                <input
+                                    type="range"
+                                    className="accent-primary w-full"
+                                    min={zoomRango.min}
+                                    max={zoomRango.max}
+                                    step={zoomRango.step || 0.1}
+                                    value={zoom}
+                                    onChange={(evento) =>
+                                        cambiarZoom(Number(evento.target.value))
+                                    }
+                                />
+                            </label>
+                        )}
                     </div>
 
                     <p className="text-muted-foreground text-center text-xs">
