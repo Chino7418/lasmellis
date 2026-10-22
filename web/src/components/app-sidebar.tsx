@@ -1,6 +1,6 @@
 import {
     BookUser,
-    LayoutGrid,
+    House,
     Package,
     ShoppingCart,
     Users,
@@ -34,9 +34,9 @@ export function AppSidebar() {
 
     const mainNavItems: NavItem[] = [
         {
-            title: 'Dashboard',
-            href: '/dashboard',
-            icon: LayoutGrid,
+            title: 'Inicio',
+            href: '/inicio',
+            icon: House,
         },
         {
             title: 'Productos',
@@ -68,7 +68,7 @@ export function AppSidebar() {
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild>
-                            <Link to="/dashboard">
+                            <Link to="/inicio">
                                 <AppLogo />
                             </Link>
                         </SidebarMenuButton>

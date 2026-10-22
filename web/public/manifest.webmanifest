@@ -2,7 +2,7 @@
     "name": "Las Mellis",
     "short_name": "Las Mellis",
     "lang": "es-AR",
-    "start_url": "/dashboard",
+    "start_url": "/inicio",
     "scope": "/",
     "display": "standalone",
     "background_color": "#E0D0E8",

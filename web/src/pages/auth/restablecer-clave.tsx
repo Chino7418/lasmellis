@@ -56,7 +56,7 @@ export default function RestablecerClave() {
         }
 
         toast.success('Contraseña actualizada.');
-        navigate('/dashboard', { replace: true });
+        navigate('/inicio', { replace: true });
     };
 
     return (

@@ -22,7 +22,7 @@ export default function Welcome() {
                     </p>
 
                     <Button asChild size="lg" className="mt-8">
-                        <Link to={session ? '/dashboard' : '/login'}>
+                        <Link to={session ? '/inicio' : '/login'}>
                             {session ? 'Ir al panel' : 'Iniciar sesión'}
                             <ArrowRight />
                         </Link>

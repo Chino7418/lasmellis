@@ -28,7 +28,7 @@ export default function Login() {
     const navigate = useNavigate();
     const location = useLocation();
     const destino =
-        (location.state as { desde?: string } | null)?.desde ?? '/dashboard';
+        (location.state as { desde?: string } | null)?.desde ?? '/inicio';
 
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');

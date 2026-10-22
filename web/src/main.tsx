@@ -27,7 +27,9 @@ const router = createBrowserRouter([
         // Páginas privadas: requieren sesión iniciada.
         element: <AppLayout />,
         children: [
-            { path: '/dashboard', element: <Dashboard /> },
+            { path: '/inicio', element: <Dashboard /> },
+            // Dirección vieja: accesos guardados y la app ya instalada.
+            { path: '/dashboard', element: <Navigate to="/inicio" replace /> },
             { path: '/productos', element: <Productos /> },
             { path: '/ventas', element: <Ventas /> },
             { path: '/clientes', element: <Clientes /> },

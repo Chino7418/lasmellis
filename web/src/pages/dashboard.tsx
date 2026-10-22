@@ -82,7 +82,7 @@ function ventas(cantidad: number): string {
 }
 
 export default function Dashboard() {
-    useTitulo('Dashboard');
+    useTitulo('Inicio');
 
     const { user } = useAuth();
     const esCelu = useIsMobile();

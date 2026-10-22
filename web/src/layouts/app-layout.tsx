@@ -9,7 +9,7 @@ import { useAuth } from '@/lib/auth';
 import type { BreadcrumbItem } from '@/types';
 
 const TITULOS: Record<string, string> = {
-    '/dashboard': 'Dashboard',
+    '/inicio': 'Inicio',
     '/productos': 'Productos',
     '/ventas': 'Ventas',
     '/clientes': 'Clientes',
