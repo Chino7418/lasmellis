@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
@@ -13,14 +13,52 @@ import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 
 /**
- * Destino del link que llega por email. Supabase inicia sesión
- * automáticamente al abrir el link, y acá se elige la clave nueva.
+ * Destino de los links que llegan por email:
+ *
+ *  - "Olvidé mi contraseña": Supabase inicia sesión solo al abrir el link.
+ *  - Invitación: el template manda ?token_hash=...&type=invite, y acá se
+ *    canjea por una sesión (así un antivirus que "abre" el link para
+ *    revisarlo no lo gasta).
+ *
+ * En los dos casos, después se elige la contraseña.
  */
 export default function RestablecerClave() {
     useTitulo('Nueva contraseña');
 
     const { session, cargando } = useAuth();
     const navigate = useNavigate();
+    const [parametros] = useSearchParams();
+
+    const tokenHash = parametros.get('token_hash');
+    const tipo = parametros.get('type');
+    const esInvitacion = tipo === 'invite';
+
+    const [verificando, setVerificando] = useState(Boolean(tokenHash));
+    const [linkInvalido, setLinkInvalido] = useState(false);
+    // El token sirve una sola vez: no canjearlo de nuevo si el efecto se
+    // repite (StrictMode).
+    const canjeado = useRef(false);
+
+    useEffect(() => {
+        if (!tokenHash || (tipo !== 'invite' && tipo !== 'recovery')) {
+            setVerificando(false);
+
+            return;
+        }
+
+        if (canjeado.current) {
+            return;
+        }
+
+        canjeado.current = true;
+
+        void supabase.auth
+            .verifyOtp({ token_hash: tokenHash, type: tipo })
+            .then(({ error }) => {
+                setLinkInvalido(Boolean(error));
+                setVerificando(false);
+            });
+    }, [tokenHash, tipo]);
 
     const [password, setPassword] = useState('');
     const [confirmacion, setConfirmacion] = useState('');
@@ -55,19 +93,36 @@ export default function RestablecerClave() {
             return;
         }
 
-        toast.success('Contraseña actualizada.');
+        toast.success(
+            esInvitacion
+                ? '¡Listo! Ya podés usar Las Mellis.'
+                : 'Contraseña actualizada.',
+        );
         navigate('/inicio', { replace: true });
     };
 
     return (
         <AuthLayout
-            title="Elegí una contraseña nueva"
-            description="Escribila dos veces para confirmarla"
+            title={
+                esInvitacion
+                    ? 'Te damos la bienvenida a Las Mellis'
+                    : 'Elegí una contraseña nueva'
+            }
+            description={
+                esInvitacion
+                    ? 'Elegí tu contraseña para entrar a la app'
+                    : 'Escribila dos veces para confirmarla'
+            }
         >
-            {!cargando && !session ? (
+            {cargando || verificando ? (
+                <div className="flex justify-center py-6">
+                    <Spinner />
+                </div>
+            ) : linkInvalido || !session ? (
                 <p className="text-destructive text-center text-sm">
-                    El link no es válido o ya venció. Pedí uno nuevo desde
-                    "¿Olvidaste tu contraseña?".
+                    {esInvitacion
+                        ? 'El link de invitación no es válido o ya venció. Pedí que te manden una invitación nueva.'
+                        : 'El link no es válido o ya venció. Pedí uno nuevo desde "¿Olvidaste tu contraseña?".'}
                 </p>
             ) : (
                 <form onSubmit={guardar} className="grid gap-6">
