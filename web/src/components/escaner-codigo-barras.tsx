@@ -38,7 +38,10 @@ export default function EscanerCodigoBarras({
     onCerrar,
     onDetectado,
 }: Props) {
-    const videoRef = useRef<HTMLVideoElement>(null);
+    // El video se guarda en estado (no en un ref) porque el Portal del
+    // Dialog lo monta un render después de abrirse: así el efecto se
+    // vuelve a ejecutar cuando el <video> efectivamente existe.
+    const [video, setVideo] = useState<HTMLVideoElement | null>(null);
     const controlsRef = useRef<IScannerControls | null>(null);
     const onDetectadoRef = useRef(onDetectado);
     const [errorCamara, setErrorCamara] = useState<string | null>(null);
@@ -48,14 +51,12 @@ export default function EscanerCodigoBarras({
     }, [onDetectado]);
 
     useEffect(() => {
-        if (!abierto || !videoRef.current) {
+        if (!abierto || !video) {
             return;
         }
 
         let cancelado = false;
         setErrorCamara(null);
-
-        const video = videoRef.current;
 
         // Sin mediaDevices no hay cámara posible: pasa en http (no https)
         // y en navegadores internos de apps como Instagram o WhatsApp.
@@ -105,7 +106,7 @@ export default function EscanerCodigoBarras({
             controlsRef.current?.stop();
             controlsRef.current = null;
         };
-    }, [abierto]);
+    }, [abierto, video]);
 
     return (
         <Dialog open={abierto} onOpenChange={(valor) => !valor && onCerrar()}>
@@ -133,7 +134,7 @@ export default function EscanerCodigoBarras({
                     }
                 >
                     <video
-                        ref={videoRef}
+                        ref={setVideo}
                         className="aspect-video w-full object-cover"
                         muted
                         playsInline

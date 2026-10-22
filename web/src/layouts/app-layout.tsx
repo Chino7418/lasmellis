@@ -1,8 +1,9 @@
+import { useEffect, useRef } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router';
 import { AppContent } from '@/components/app-content';
 import { AppSidebar } from '@/components/app-sidebar';
 import { AppSidebarHeader } from '@/components/app-sidebar-header';
-import { SidebarProvider } from '@/components/ui/sidebar';
+import { SidebarProvider, useSidebar } from '@/components/ui/sidebar';
 import { useAuth } from '@/lib/auth';
 import type { BreadcrumbItem } from '@/types';
 
@@ -14,9 +15,30 @@ const TITULOS: Record<string, string> = {
     '/configuracion': 'Configuración',
 };
 
-function sidebarAbierta(): boolean {
-    // El componente Sidebar guarda su estado en esta cookie.
-    return !document.cookie.includes('sidebar_state=false');
+/**
+ * Retrae el menú cada vez que se cambia de página: en el celular lo
+ * oculta y en la compu lo deja como franja de íconos. Se vuelve a
+ * desplegar con el botón de hamburguesa.
+ */
+function RetraerMenuAlNavegar() {
+    const { pathname } = useLocation();
+    const sidebar = useSidebar();
+
+    // setOpen cambia de identidad cada vez que el menú se abre o cierra;
+    // se guarda en un ref para que el efecto dependa solo de la página
+    // (si no, abrir el menú lo volvería a cerrar al instante).
+    const sidebarRef = useRef(sidebar);
+
+    useEffect(() => {
+        sidebarRef.current = sidebar;
+    });
+
+    useEffect(() => {
+        sidebarRef.current.setOpenMobile(false);
+        sidebarRef.current.setOpen(false);
+    }, [pathname]);
+
+    return null;
 }
 
 /**
@@ -40,7 +62,8 @@ export default function AppLayout() {
         : [];
 
     return (
-        <SidebarProvider defaultOpen={sidebarAbierta()}>
+        <SidebarProvider defaultOpen={false}>
+            <RetraerMenuAlNavegar />
             <AppSidebar />
             <AppContent variant="sidebar" className="overflow-x-hidden">
                 <AppSidebarHeader breadcrumbs={breadcrumbs} />
