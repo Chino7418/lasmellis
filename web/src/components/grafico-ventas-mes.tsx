@@ -69,7 +69,7 @@ export function GraficoVentasMes({ datos }: { datos: VentasMes[] }) {
             <div className="flex gap-3">
                 {/* EJE Y: tres referencias, discretas */}
                 <div
-                    className="text-muted-foreground relative w-14 shrink-0 text-right text-[11px] tabular-nums"
+                    className="text-muted-foreground relative w-12 shrink-0 text-right text-[11px] tabular-nums sm:w-14"
                     style={{ height: ALTO_PX }}
                     aria-hidden="true"
                 >
@@ -194,22 +194,40 @@ export function GraficoVentasMes({ datos }: { datos: VentasMes[] }) {
             </div>
 
             {/* EJE X */}
-            <div className="ml-[4.25rem] mt-2 flex gap-0.5" aria-hidden="true">
+            {/* En el celu no entran 12 etiquetas: va un mes sí y uno no, siempre con el actual. */}
+            <div
+                className="ml-[3.75rem] mt-2 flex gap-0.5 sm:ml-[4.25rem]"
+                aria-hidden="true"
+            >
                 {datos.map((dato, i) => {
                     const fecha = fechaDe(dato.mes);
                     const conAnio = i === 0 || fecha.getMonth() === 0;
+                    const visibleEnCelu = (ultimo - i) % 2 === 0;
+                    // El año va en el primer mes visible de cada año.
+                    const conAnioEnCelu =
+                        visibleEnCelu &&
+                        (i < 2 ||
+                            fechaDe(datos[i - 2].mes).getFullYear() !==
+                                fecha.getFullYear());
 
                     return (
                         <span
                             key={dato.mes}
                             className={cn(
-                                'text-muted-foreground flex-1 text-center text-[11px] capitalize',
+                                'text-muted-foreground min-w-0 flex-1 whitespace-nowrap text-center text-[11px] capitalize',
                                 i === ultimo && 'text-foreground font-medium',
+                                !visibleEnCelu && 'max-sm:invisible',
                             )}
                         >
                             {nombreMes.format(fecha).replace('.', '')}
-                            {conAnio && (
-                                <span className="block text-[10px]">
+                            {(conAnio || conAnioEnCelu) && (
+                                <span
+                                    className={cn(
+                                        'block text-[10px]',
+                                        !conAnio && 'sm:hidden',
+                                        !conAnioEnCelu && 'max-sm:hidden',
+                                    )}
+                                >
                                     {fecha.getFullYear()}
                                 </span>
                             )}

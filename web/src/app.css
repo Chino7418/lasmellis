@@ -75,6 +75,8 @@
  * estado (deuda/error, éxito, atención).
  */
 :root {
+    /* Calendario, scrollbars y controles nativos siguen el tema. */
+    color-scheme: light;
     --background: oklch(0.982 0.006 310);
     --foreground: oklch(0.24 0.035 310);
     --card: oklch(1 0 0);
@@ -116,6 +118,7 @@
 }
 
 .dark {
+    color-scheme: dark;
     --background: oklch(0.17 0.02 310);
     --foreground: oklch(0.95 0.012 310);
     --card: oklch(0.21 0.025 310);
@@ -162,5 +165,26 @@
 
     body {
         @apply bg-background text-foreground;
+    }
+
+    /*
+     * Selector de fecha nativo. En iOS el input de fecha ignora el ancho,
+     * centra el texto y se achica cuando está vacío: lo emparejamos con
+     * el resto de los inputs.
+     */
+    input[type='date'] {
+        -webkit-appearance: none;
+        appearance: none;
+        text-align: left;
+    }
+
+    input[type='date']::-webkit-date-and-time-value {
+        text-align: left;
+        min-height: 1.5em;
+    }
+
+    input[type='date']::-webkit-calendar-picker-indicator {
+        cursor: pointer;
+        opacity: 0.6;
     }
 }
