@@ -2,6 +2,7 @@ import {
     CalendarDays,
     CheckCircle2,
     PackageX,
+    Plus,
     Receipt,
     ShoppingCart,
     TrendingUp,
@@ -19,6 +20,7 @@ import {
 import type { VentasMes } from '@/components/grafico-ventas-mes';
 import { Page, PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useTitulo } from '@/hooks/use-titulo';
@@ -108,6 +110,14 @@ export default function Dashboard() {
             <PageHeader
                 title={nombre ? `Hola, ${nombre}` : 'Hola'}
                 description={`Así vienen las ventas · ${hoyLargo}`}
+                actions={
+                    <Button asChild>
+                        <Link to="/ventas">
+                            <Plus />
+                            Nueva venta
+                        </Link>
+                    </Button>
+                }
             />
 
             {error && <EstadoError mensaje={error} />}
