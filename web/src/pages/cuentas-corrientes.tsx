@@ -425,7 +425,7 @@ function DetalleCuenta({
 
     return (
         <Dialog open onOpenChange={(abierto) => !abierto && onCerrar()}>
-            <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+            <DialogContent className="max-h-[90dvh] overflow-y-auto p-4 sm:max-w-2xl sm:p-6">
                 <DialogHeader>
                     <DialogTitle>{nombreCompleto(cliente)}</DialogTitle>
                     <DialogDescription>
@@ -635,35 +635,16 @@ function DetalleCuenta({
                             corriente.
                         </p>
                     ) : (
-                        <div className="overflow-x-auto rounded-lg border">
-                            <table className="w-full min-w-[520px] text-sm">
-                                <thead>
-                                    <tr className="text-muted-foreground border-b text-left text-xs">
-                                        <th className="px-3 py-2 font-medium">
-                                            Fecha
-                                        </th>
-                                        <th className="px-3 py-2 font-medium">
-                                            Concepto
-                                        </th>
-                                        <th className="px-3 py-2 text-right font-medium">
-                                            Debe
-                                        </th>
-                                        <th className="px-3 py-2 text-right font-medium">
-                                            Pagó
-                                        </th>
-                                        <th className="px-3 py-2 text-right font-medium">
-                                            Saldo
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y">
-                                    {filas.map((fila) => (
-                                        <tr key={fila.id}>
-                                            <td className="text-muted-foreground whitespace-nowrap px-3 py-2 text-xs">
-                                                {/* Las fechas se guardan en UTC sin zona. */}
-                                                {fechaHora(`${fila.fecha}Z`)}
-                                            </td>
-                                            <td className="px-3 py-2">
+                        <>
+                            {/* Celu: lista compacta en vez de la tabla */}
+                            <ul className="divide-y rounded-lg border sm:hidden">
+                                {filas.map((fila) => (
+                                    <li
+                                        key={fila.id}
+                                        className="flex items-start justify-between gap-3 px-3 py-2.5"
+                                    >
+                                        <div className="min-w-0">
+                                            <p className="text-sm">
                                                 {fila.concepto}
                                                 {fila.pago && (
                                                     <span className="text-muted-foreground">
@@ -674,25 +655,94 @@ function DetalleCuenta({
                                                         )}
                                                     </span>
                                                 )}
-                                            </td>
-                                            <td className="text-destructive px-3 py-2 text-right tabular-nums">
+                                            </p>
+                                            <p className="text-muted-foreground text-xs">
+                                                {fechaHora(`${fila.fecha}Z`)}
+                                            </p>
+                                        </div>
+                                        <div className="shrink-0 text-right tabular-nums">
+                                            <p
+                                                className={cn(
+                                                    'text-sm font-medium',
+                                                    fila.tipo === 'debe'
+                                                        ? 'text-destructive'
+                                                        : 'text-success',
+                                                )}
+                                            >
                                                 {fila.tipo === 'debe'
-                                                    ? dinero(fila.importe)
-                                                    : ''}
-                                            </td>
-                                            <td className="text-success px-3 py-2 text-right tabular-nums">
-                                                {fila.tipo === 'haber'
-                                                    ? dinero(fila.importe)
-                                                    : ''}
-                                            </td>
-                                            <td className="px-3 py-2 text-right font-medium tabular-nums">
-                                                {dinero(fila.acumulado)}
-                                            </td>
+                                                    ? '+'
+                                                    : '−'}
+                                                {dinero(fila.importe)}
+                                            </p>
+                                            <p className="text-muted-foreground text-xs">
+                                                Saldo {dinero(fila.acumulado)}
+                                            </p>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+
+                            <div className="hidden overflow-x-auto rounded-lg border sm:block">
+                                <table className="w-full min-w-[520px] text-sm">
+                                    <thead>
+                                        <tr className="text-muted-foreground border-b text-left text-xs">
+                                            <th className="px-3 py-2 font-medium">
+                                                Fecha
+                                            </th>
+                                            <th className="px-3 py-2 font-medium">
+                                                Concepto
+                                            </th>
+                                            <th className="px-3 py-2 text-right font-medium">
+                                                Debe
+                                            </th>
+                                            <th className="px-3 py-2 text-right font-medium">
+                                                Pagó
+                                            </th>
+                                            <th className="px-3 py-2 text-right font-medium">
+                                                Saldo
+                                            </th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                        {filas.map((fila) => (
+                                            <tr key={fila.id}>
+                                                <td className="text-muted-foreground whitespace-nowrap px-3 py-2 text-xs">
+                                                    {/* Las fechas se guardan en UTC sin zona. */}
+                                                    {fechaHora(
+                                                        `${fila.fecha}Z`,
+                                                    )}
+                                                </td>
+                                                <td className="px-3 py-2">
+                                                    {fila.concepto}
+                                                    {fila.pago && (
+                                                        <span className="text-muted-foreground">
+                                                            {' · '}
+                                                            {tipoPago(
+                                                                fila.pago
+                                                                    .medio_pago,
+                                                            )}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="text-destructive px-3 py-2 text-right tabular-nums">
+                                                    {fila.tipo === 'debe'
+                                                        ? dinero(fila.importe)
+                                                        : ''}
+                                                </td>
+                                                <td className="text-success px-3 py-2 text-right tabular-nums">
+                                                    {fila.tipo === 'haber'
+                                                        ? dinero(fila.importe)
+                                                        : ''}
+                                                </td>
+                                                <td className="px-3 py-2 text-right font-medium tabular-nums">
+                                                    {dinero(fila.acumulado)}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
                     )}
                 </div>
             </DialogContent>
