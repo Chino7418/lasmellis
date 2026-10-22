@@ -3,6 +3,7 @@ import { Navigate, Outlet, useLocation } from 'react-router';
 import { AppContent } from '@/components/app-content';
 import { AppSidebar } from '@/components/app-sidebar';
 import { AppSidebarHeader } from '@/components/app-sidebar-header';
+import { PantallaCarga } from '@/components/pantalla-carga';
 import { SidebarProvider, useSidebar } from '@/components/ui/sidebar';
 import { useAuth } from '@/lib/auth';
 import type { BreadcrumbItem } from '@/types';
@@ -51,7 +52,7 @@ export default function AppLayout() {
     const { pathname } = useLocation();
 
     if (cargando) {
-        return null;
+        return <PantallaCarga />;
     }
 
     if (!session) {

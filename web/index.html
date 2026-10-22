@@ -25,17 +25,71 @@
             html.dark {
                 background-color: oklch(0.17 0.02 310);
             }
+
+            /* Pantalla "Abriendo…" mientras carga la app (también la usa React). */
+            .pantalla-carga {
+                position: fixed;
+                inset: 0;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 1.25rem;
+                color: oklch(0.52 0.03 310);
+                font-family: 'Instrument Sans', system-ui, sans-serif;
+                font-size: 0.875rem;
+            }
+
+            .pantalla-carga img {
+                width: 9rem;
+                height: auto;
+            }
+
+            html.dark .pantalla-carga img {
+                filter: invert(1);
+            }
+
+            .pantalla-carga .ruedita {
+                width: 1.75rem;
+                height: 1.75rem;
+                border-radius: 9999px;
+                border: 3px solid oklch(0.89 0.022 310);
+                border-top-color: oklch(0.34 0.08 315);
+                animation: girar 0.8s linear infinite;
+            }
+
+            html.dark .pantalla-carga .ruedita {
+                border-color: oklch(0.3 0.03 310);
+                border-top-color: oklch(0.84 0.07 310);
+            }
+
+            @keyframes girar {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
         </style>
 
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <meta name="theme-color" content="#E0D0E8" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="Las Mellis" />
 
         <link rel="preconnect" href="https://fonts.bunny.net" />
         <link href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600,700|playfair-display:500,600,500i" rel="stylesheet" />
     </head>
     <body class="font-sans antialiased">
-        <div id="root"></div>
+        <div id="root">
+            <div class="pantalla-carga" role="status">
+                <img src="/images/logo-wordmark.png" alt="Las Mellis" />
+                <div class="ruedita" aria-hidden="true"></div>
+                <span>Abriendo…</span>
+            </div>
+        </div>
         <script type="module" src="/src/main.tsx"></script>
     </body>
 </html>
