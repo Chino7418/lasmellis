@@ -1,5 +1,4 @@
 import {
-    Check,
     ChevronRight,
     Package,
     Pencil,
@@ -7,7 +6,6 @@ import {
     ScanLine,
     Search,
     Trash2,
-    X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -15,6 +13,11 @@ import { Campo } from '@/components/campo';
 import EscanerCodigoBarras from '@/components/escaner-codigo-barras';
 import { EstadoError, EstadoVacio, FilasCargando } from '@/components/estados';
 import { Page, PageHeader } from '@/components/page-header';
+import {
+    evitarCierreSiCreando,
+    SelectorCatalogo,
+} from '@/components/selector-catalogo';
+import VarianteDialog from '@/components/variante-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -38,13 +41,15 @@ import {
 import { useTitulo } from '@/hooks/use-titulo';
 import {
     buscarProductoPorCodigo,
-    crearMarca,
     eliminarProducto as eliminarProductoApi,
+    eliminarVariante as eliminarVarianteApi,
     ErrorValidacion,
     guardarProducto as guardarProductoApi,
+    listarDepositos,
     listarProductos,
     obtenerCatalogos,
 } from '@/lib/api';
+import type { ItemCatalogo, TablaCatalogo } from '@/lib/api';
 import { cantidad, dinero } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 
@@ -173,9 +178,13 @@ export default function Productos() {
     const [escanerAbierto, setEscanerAbierto] = useState(false);
     const [escanerFormAbierto, setEscanerFormAbierto] = useState(false);
 
-    // null = selector normal; string = escribiendo una marca nueva.
-    const [marcaNueva, setMarcaNueva] = useState<string | null>(null);
-    const [creandoMarca, setCreandoMarca] = useState(false);
+    const [depositos, setDepositos] = useState<ItemCatalogo[]>([]);
+
+    // Variante que se está creando o editando (variante null = nueva).
+    const [formVariante, setFormVariante] = useState<{
+        producto: { id: number; nombre: string };
+        variante: Variante | null;
+    } | null>(null);
 
     const cargarProductos = () => {
         return listarProductos<Producto>()
@@ -199,7 +208,50 @@ export default function Productos() {
             .catch(() => {
                 toast.error('No se pudieron cargar los catálogos.');
             });
+
+        void listarDepositos()
+            .then(setDepositos)
+            .catch(() => {
+                toast.error('No se pudieron cargar los depósitos.');
+            });
     }, []);
+
+    const agregarAlCatalogo = (tabla: TablaCatalogo, item: ItemCatalogo) => {
+        setCatalogos((actual) => ({
+            ...actual,
+            // Los talles se agregan al final (respetan su orden lógico);
+            // marcas y colores, en orden alfabético.
+            [tabla]:
+                tabla === 'talles'
+                    ? [...actual.talles, item]
+                    : [...actual[tabla], item].sort((a, b) =>
+                          a.nombre.localeCompare(b.nombre, 'es'),
+                      ),
+        }));
+    };
+
+    const eliminarVariante = async (variante: Variante) => {
+        const nombre =
+            [variante.color?.nombre, variante.talle?.nombre]
+                .filter(Boolean)
+                .join(' / ') || variante.codigo_barras;
+
+        if (!window.confirm(`¿Eliminar la variante "${nombre}"?`)) {
+            return;
+        }
+
+        try {
+            await eliminarVarianteApi(variante.id);
+            toast.success('Variante eliminada.');
+            await cargarProductos();
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : 'No se pudo eliminar la variante.',
+            );
+        }
+    };
 
     const toggleProducto = (id: number) => {
         setAbiertos((actuales) =>
@@ -308,51 +360,10 @@ export default function Productos() {
         }
     };
 
-    const agregarMarca = async () => {
-        if (creandoMarca || marcaNueva === null) {
-            return;
-        }
-
-        setCreandoMarca(true);
-
-        try {
-            const { marca, yaExistia } = await crearMarca(marcaNueva);
-
-            setCatalogos((actual) => ({
-                ...actual,
-                marcas: yaExistia
-                    ? actual.marcas
-                    : [...actual.marcas, marca].sort((a, b) =>
-                          a.nombre.localeCompare(b.nombre, 'es'),
-                      ),
-            }));
-            setFormData((actual) => ({
-                ...actual,
-                marca_id: String(marca.id),
-            }));
-            setMarcaNueva(null);
-
-            toast.success(
-                yaExistia
-                    ? `La marca "${marca.nombre}" ya existía: quedó seleccionada.`
-                    : `Marca "${marca.nombre}" creada.`,
-            );
-        } catch (error) {
-            toast.error(
-                error instanceof Error
-                    ? error.message
-                    : 'No se pudo crear la marca.',
-            );
-        } finally {
-            setCreandoMarca(false);
-        }
-    };
-
     const abrirNuevo = () => {
         setEditando(null);
         setFormData(formVacio);
         setErroresForm({});
-        setMarcaNueva(null);
         setFormAbierto(true);
     };
 
@@ -372,7 +383,6 @@ export default function Productos() {
             activo: producto.activo,
         });
         setErroresForm({});
-        setMarcaNueva(null);
         setFormAbierto(true);
     };
 
@@ -399,13 +409,24 @@ export default function Productos() {
         };
 
         try {
-            await guardarProductoApi(payload, editando?.id);
+            const id = await guardarProductoApi(payload, editando?.id);
+            const esNuevo = !editando;
 
             toast.success(
-                editando ? 'Producto actualizado.' : 'Producto creado.',
+                esNuevo ? 'Producto creado.' : 'Producto actualizado.',
             );
             cerrarForm();
             await cargarProductos();
+
+            // Un producto sin variantes no se puede vender: al crearlo se
+            // abre directamente el alta de su primera variante.
+            if (esNuevo) {
+                setAbiertos((actuales) => [...actuales, id]);
+                setFormVariante({
+                    producto: { id, nombre: payload.nombre.trim() },
+                    variante: null,
+                });
+            }
         } catch (error) {
             if (error instanceof ErrorValidacion) {
                 setErroresForm(error.errores);
@@ -672,135 +693,23 @@ export default function Productos() {
 
                                         {/* VARIANTES */}
                                         {abierto && (
-                                            <div className="bg-muted/30 border-t px-5 py-4 md:pl-14">
-                                                {producto.variantes.length ===
-                                                0 ? (
-                                                    <p className="text-muted-foreground text-sm">
-                                                        Este producto todavía no
-                                                        tiene variantes
-                                                        cargadas.
-                                                    </p>
-                                                ) : (
-                                                    <div className="bg-card overflow-x-auto rounded-lg border">
-                                                        <table className="w-full min-w-[640px] text-sm">
-                                                            <thead>
-                                                                <tr className="text-muted-foreground border-b text-left text-xs">
-                                                                    <th className="px-4 py-2.5 font-medium">
-                                                                        Código
-                                                                        de
-                                                                        barras
-                                                                    </th>
-                                                                    <th className="px-4 py-2.5 font-medium">
-                                                                        Color
-                                                                    </th>
-                                                                    <th className="px-4 py-2.5 font-medium">
-                                                                        Talle
-                                                                    </th>
-                                                                    <th className="px-4 py-2.5 text-right font-medium">
-                                                                        Precio
-                                                                    </th>
-                                                                    <th className="px-4 py-2.5 text-right font-medium">
-                                                                        Stock
-                                                                    </th>
-                                                                    <th className="px-4 py-2.5 font-medium">
-                                                                        Depósito
-                                                                    </th>
-                                                                </tr>
-                                                            </thead>
-
-                                                            <tbody className="divide-y">
-                                                                {producto.variantes.map(
-                                                                    (
-                                                                        variante,
-                                                                        i,
-                                                                    ) => {
-                                                                        const precio =
-                                                                            variante.precios.find(
-                                                                                (
-                                                                                    item,
-                                                                                ) =>
-                                                                                    item.activo,
-                                                                            );
-                                                                        const stock =
-                                                                            stocks[
-                                                                                i
-                                                                            ];
-
-                                                                        return (
-                                                                            <tr
-                                                                                key={
-                                                                                    variante.id
-                                                                                }
-                                                                            >
-                                                                                <td className="px-4 py-2.5 font-mono text-xs">
-                                                                                    {
-                                                                                        variante.codigo_barras
-                                                                                    }
-                                                                                </td>
-                                                                                <td className="px-4 py-2.5">
-                                                                                    {variante
-                                                                                        .color
-                                                                                        ?.nombre ??
-                                                                                        '—'}
-                                                                                </td>
-                                                                                <td className="px-4 py-2.5">
-                                                                                    {variante
-                                                                                        .talle
-                                                                                        ?.nombre ??
-                                                                                        '—'}
-                                                                                </td>
-                                                                                <td className="px-4 py-2.5 text-right font-medium tabular-nums">
-                                                                                    {precio
-                                                                                        ? dinero(
-                                                                                              precio.precio,
-                                                                                          )
-                                                                                        : '—'}
-                                                                                </td>
-                                                                                <td className="px-4 py-2.5 text-right">
-                                                                                    {stock.bajo ? (
-                                                                                        <Badge
-                                                                                            variant="warning"
-                                                                                            className="tabular-nums"
-                                                                                        >
-                                                                                            {cantidad(
-                                                                                                stock.total,
-                                                                                            )}
-                                                                                        </Badge>
-                                                                                    ) : (
-                                                                                        <span className="tabular-nums">
-                                                                                            {cantidad(
-                                                                                                stock.total,
-                                                                                            )}
-                                                                                        </span>
-                                                                                    )}
-                                                                                </td>
-                                                                                <td className="text-muted-foreground px-4 py-2.5">
-                                                                                    {variante.stock
-                                                                                        .map(
-                                                                                            (
-                                                                                                item,
-                                                                                            ) =>
-                                                                                                item
-                                                                                                    .deposito
-                                                                                                    ?.nombre,
-                                                                                        )
-                                                                                        .filter(
-                                                                                            Boolean,
-                                                                                        )
-                                                                                        .join(
-                                                                                            ', ',
-                                                                                        ) ||
-                                                                                        '—'}
-                                                                                </td>
-                                                                            </tr>
-                                                                        );
-                                                                    },
-                                                                )}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                )}
-                                            </div>
+                                            <TablaVariantes
+                                                producto={producto}
+                                                stocks={stocks}
+                                                onAgregar={() =>
+                                                    setFormVariante({
+                                                        producto,
+                                                        variante: null,
+                                                    })
+                                                }
+                                                onEditar={(variante) =>
+                                                    setFormVariante({
+                                                        producto,
+                                                        variante,
+                                                    })
+                                                }
+                                                onEliminar={eliminarVariante}
+                                            />
                                         )}
                                     </li>
                                 );
@@ -814,13 +723,7 @@ export default function Productos() {
             <Dialog open={formAbierto} onOpenChange={setFormAbierto}>
                 <DialogContent
                     className="sm:max-w-lg"
-                    onEscapeKeyDown={(evento) => {
-                        // Escribiendo una marca nueva, Escape cancela solo eso.
-                        if (marcaNueva !== null) {
-                            evento.preventDefault();
-                            setMarcaNueva(null);
-                        }
-                    }}
+                    onEscapeKeyDown={evitarCierreSiCreando}
                 >
                     <DialogHeader>
                         <DialogTitle>
@@ -949,90 +852,21 @@ export default function Productos() {
                         </Campo>
 
                         <Campo label="Marca" opcional>
-                            {marcaNueva === null ? (
-                                <div className="flex gap-2">
-                                    <Select
-                                        value={formData.marca_id}
-                                        onValueChange={(valor) =>
-                                            setFormData((actual) => ({
-                                                ...actual,
-                                                marca_id: valor,
-                                            }))
-                                        }
-                                    >
-                                        <SelectTrigger className="w-full min-w-0">
-                                            <SelectValue placeholder="Seleccionar" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {catalogos.marcas.map((item) => (
-                                                <SelectItem
-                                                    key={item.id}
-                                                    value={String(item.id)}
-                                                >
-                                                    {item.nombre}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="icon"
-                                        className="shrink-0"
-                                        onClick={() => setMarcaNueva('')}
-                                        title="Agregar una marca nueva"
-                                    >
-                                        <Plus />
-                                    </Button>
-                                </div>
-                            ) : (
-                                <div className="flex gap-2">
-                                    <Input
-                                        autoFocus
-                                        value={marcaNueva}
-                                        placeholder="Nombre de la marca"
-                                        onChange={(evento) =>
-                                            setMarcaNueva(evento.target.value)
-                                        }
-                                        onKeyDown={(evento) => {
-                                            // Enter crea la marca (sin enviar el
-                                            // formulario del producto); Escape cancela.
-                                            if (evento.key === 'Enter') {
-                                                evento.preventDefault();
-                                                void agregarMarca();
-                                            }
-
-                                            if (evento.key === 'Escape') {
-                                                evento.preventDefault();
-                                                evento.stopPropagation();
-                                                setMarcaNueva(null);
-                                            }
-                                        }}
-                                        disabled={creandoMarca}
-                                    />
-                                    <Button
-                                        type="button"
-                                        size="icon"
-                                        className="shrink-0"
-                                        onClick={() => void agregarMarca()}
-                                        disabled={creandoMarca}
-                                        title="Guardar marca"
-                                    >
-                                        <Check />
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="shrink-0"
-                                        onClick={() => setMarcaNueva(null)}
-                                        disabled={creandoMarca}
-                                        title="Cancelar"
-                                    >
-                                        <X />
-                                    </Button>
-                                </div>
-                            )}
+                            <SelectorCatalogo
+                                tabla="marcas"
+                                items={catalogos.marcas}
+                                valor={formData.marca_id}
+                                onCambio={(valor) =>
+                                    setFormData((actual) => ({
+                                        ...actual,
+                                        marca_id: valor,
+                                    }))
+                                }
+                                onCreado={(item) =>
+                                    agregarAlCatalogo('marcas', item)
+                                }
+                                opcionVacia="Sin marca"
+                            />
                         </Campo>
 
                         <Campo
@@ -1103,6 +937,170 @@ export default function Productos() {
                 onCerrar={() => setEscanerFormAbierto(false)}
                 onDetectado={manejarCodigoEscaneadoForm}
             />
+
+            {/* ALTA / EDICIÓN DE VARIANTE */}
+            {formVariante && (
+                <VarianteDialog
+                    key={`${formVariante.producto.id}-${formVariante.variante?.id ?? 'nueva'}`}
+                    abierto
+                    onCerrar={() => setFormVariante(null)}
+                    onGuardada={() => {
+                        setFormVariante(null);
+                        void cargarProductos();
+                    }}
+                    producto={formVariante.producto}
+                    variante={formVariante.variante}
+                    colores={catalogos.colores}
+                    talles={catalogos.talles}
+                    depositos={depositos}
+                    onCatalogoCreado={agregarAlCatalogo}
+                />
+            )}
         </Page>
+    );
+}
+
+function TablaVariantes({
+    producto,
+    stocks,
+    onAgregar,
+    onEditar,
+    onEliminar,
+}: {
+    producto: Producto;
+    stocks: ReturnType<typeof stockDeVariante>[];
+    onAgregar: () => void;
+    onEditar: (variante: Variante) => void;
+    onEliminar: (variante: Variante) => void;
+}) {
+    return (
+        <div className="bg-muted/30 space-y-3 border-t px-5 py-4 md:pl-14">
+            {producto.variantes.length === 0 ? (
+                <p className="text-muted-foreground text-sm">
+                    Este producto todavía no tiene variantes. Agregá al menos
+                    una (color y talle, con su precio y stock) para poder
+                    venderlo.
+                </p>
+            ) : (
+                <div className="bg-card overflow-x-auto rounded-lg border">
+                    <table className="w-full min-w-[600px] text-sm">
+                        <thead>
+                            <tr className="text-muted-foreground border-b text-left text-xs">
+                                <th className="px-4 py-2.5 font-medium">
+                                    Color
+                                </th>
+                                <th className="px-4 py-2.5 font-medium">
+                                    Talle
+                                </th>
+                                <th className="px-4 py-2.5 font-medium">
+                                    Código de barras
+                                </th>
+                                <th className="px-4 py-2.5 text-right font-medium">
+                                    Precio
+                                </th>
+                                <th className="px-4 py-2.5 text-right font-medium">
+                                    Stock
+                                </th>
+                                <th className="w-20 px-2 py-2.5" />
+                            </tr>
+                        </thead>
+
+                        <tbody className="divide-y">
+                            {producto.variantes.map((variante, i) => {
+                                const precio = variante.precios.find(
+                                    (item) => item.activo,
+                                );
+                                const stock = stocks[i];
+
+                                return (
+                                    <tr
+                                        key={variante.id}
+                                        className={cn(
+                                            !variante.activo &&
+                                                'text-muted-foreground',
+                                        )}
+                                    >
+                                        <td className="px-4 py-2">
+                                            {variante.color?.nombre ?? '—'}
+                                            {!variante.activo && (
+                                                <Badge
+                                                    variant="outline"
+                                                    className="ml-2"
+                                                >
+                                                    Inactiva
+                                                </Badge>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-2">
+                                            {variante.talle?.nombre ?? '—'}
+                                        </td>
+                                        <td className="px-4 py-2 font-mono text-xs">
+                                            {variante.codigo_barras}
+                                        </td>
+                                        <td className="px-4 py-2 text-right font-medium tabular-nums">
+                                            {precio
+                                                ? dinero(precio.precio)
+                                                : '—'}
+                                        </td>
+                                        <td className="px-4 py-2 text-right">
+                                            {stock.bajo ? (
+                                                <Badge
+                                                    variant="warning"
+                                                    className="tabular-nums"
+                                                >
+                                                    {cantidad(stock.total)}
+                                                </Badge>
+                                            ) : (
+                                                <span className="tabular-nums">
+                                                    {cantidad(stock.total)}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-2 py-1">
+                                            <div className="flex justify-end gap-1">
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="size-8"
+                                                    onClick={() =>
+                                                        onEditar(variante)
+                                                    }
+                                                    title="Editar variante"
+                                                >
+                                                    <Pencil />
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="text-muted-foreground hover:text-destructive size-8"
+                                                    onClick={() =>
+                                                        onEliminar(variante)
+                                                    }
+                                                    title="Eliminar variante"
+                                                >
+                                                    <Trash2 />
+                                                </Button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onAgregar}
+            >
+                <Plus />
+                Agregar variante
+            </Button>
+        </div>
     );
 }

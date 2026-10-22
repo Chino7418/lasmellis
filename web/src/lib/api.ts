@@ -147,7 +147,7 @@ export async function buscarProductoPorCodigo<T>(
     return data as T | null;
 }
 
-type ItemCatalogo = { id: number; nombre: string };
+export type ItemCatalogo = { id: number; nombre: string };
 
 export async function obtenerCatalogos(): Promise<{
     categorias: ItemCatalogo[];
@@ -155,11 +155,17 @@ export async function obtenerCatalogos(): Promise<{
     colores: ItemCatalogo[];
     talles: ItemCatalogo[];
 }> {
-    const [categorias, marcas, colores, talles] = await Promise.all(
-        (['categorias', 'marcas', 'colores', 'talles'] as const).map((tabla) =>
-            supabase.from(tabla).select('id, nombre').order('nombre'),
-        ),
-    );
+    const [categorias, marcas, colores, talles] = await Promise.all([
+        supabase.from('categorias').select('id, nombre').order('nombre'),
+        supabase.from('marcas').select('id, nombre').order('nombre'),
+        supabase.from('colores').select('id, nombre').order('nombre'),
+        // Los talles van en su orden lógico (XS, S, M...), no alfabético.
+        supabase
+            .from('talles')
+            .select('id, nombre')
+            .order('orden')
+            .order('nombre'),
+    ]);
 
     for (const resultado of [categorias, marcas, colores, talles]) {
         if (resultado.error) {
@@ -175,54 +181,126 @@ export async function obtenerCatalogos(): Promise<{
     };
 }
 
+export type TablaCatalogo = 'marcas' | 'colores' | 'talles';
+
+const CATALOGOS: Record<TablaCatalogo, { nombre: string; largo: number }> = {
+    marcas: { nombre: 'la marca', largo: 100 },
+    colores: { nombre: 'el color', largo: 50 },
+    talles: { nombre: 'el talle', largo: 20 },
+};
+
 /**
- * Crea una marca y la devuelve. Si ya existe una con el mismo nombre
- * (sin importar mayúsculas), devuelve esa en lugar de duplicarla.
+ * Agrega una marca, un color o un talle y lo devuelve. Si ya existe uno
+ * con el mismo nombre (sin importar mayúsculas), devuelve ese en lugar
+ * de duplicarlo.
  */
-export async function crearMarca(
+export async function crearItemCatalogo(
+    tabla: TablaCatalogo,
     nombre: string,
-): Promise<{ marca: ItemCatalogo; yaExistia: boolean }> {
+): Promise<{ item: ItemCatalogo; yaExistia: boolean }> {
+    const { nombre: queEs, largo } = CATALOGOS[tabla];
     const limpio = nombre.trim().replace(/\s+/g, ' ');
 
     if (!limpio) {
-        throw new Error('Escribí el nombre de la marca.');
+        throw new Error(`Escribí el nombre de ${queEs}.`);
     }
 
-    if (limpio.length > 100) {
-        throw new Error('El nombre admite hasta 100 caracteres.');
+    if (limpio.length > largo) {
+        throw new Error(`El nombre admite hasta ${largo} caracteres.`);
     }
 
     // ilike sin comodines = comparación exacta sin distinguir mayúsculas.
     const existente = await supabase
-        .from('marcas')
+        .from(tabla)
         .select('id, nombre')
         .ilike('nombre', limpio.replace(/[%_\\]/g, '\\$&'))
         .limit(1)
         .maybeSingle();
 
     if (existente.error) {
-        fallar(existente.error, 'No se pudo crear la marca.');
+        fallar(existente.error, `No se pudo agregar ${queEs}.`);
     }
 
     if (existente.data) {
-        return { marca: existente.data, yaExistia: true };
+        return { item: existente.data, yaExistia: true };
     }
 
     const { data, error } = await supabase
-        .from('marcas')
+        .from(tabla)
         .insert({ nombre: limpio })
         .select('id, nombre')
         .single();
 
     if (error?.code === '23505') {
-        throw new Error(`Ya existe la marca "${limpio}".`);
+        throw new Error(`"${limpio}" ya existe.`);
     }
 
     if (error) {
-        fallar(error, 'No se pudo crear la marca.');
+        fallar(error, `No se pudo agregar ${queEs}.`);
     }
 
-    return { marca: data, yaExistia: false };
+    return { item: data, yaExistia: false };
+}
+
+/* ------------------------------------------------------------------ */
+/* VARIANTES                                                          */
+/* ------------------------------------------------------------------ */
+
+export type DatosVariante = {
+    id?: number;
+    producto_id: number;
+    color_id: number | null;
+    talle_id: number | null;
+    codigo_barras: string;
+    precio: number;
+    deposito_id: number;
+    cantidad: number;
+    stock_minimo: number;
+    activo: boolean;
+};
+
+/**
+ * Alta o edición de una variante con su precio y stock, todo junto
+ * (ver la función guardar_variante en supabase/migrations).
+ */
+export async function guardarVariante(datos: DatosVariante): Promise<void> {
+    const { error } = await supabase.rpc('guardar_variante', {
+        p_variante: datos,
+    });
+
+    if (error) {
+        fallar(error, 'No se pudo guardar la variante.');
+    }
+}
+
+export async function eliminarVariante(id: number): Promise<void> {
+    const { error } = await supabase.rpc('eliminar_variante', {
+        p_variante_id: id,
+    });
+
+    if (error) {
+        fallar(error, 'No se pudo eliminar la variante.');
+    }
+}
+
+/**
+ * Código EAN-13 para prendas que no traen código de barras. Empieza con
+ * "2", el rango reservado para uso interno de cada comercio, así nunca
+ * choca con el código de un producto de marca.
+ */
+export function generarCodigoInterno(): string {
+    const digitos = [2];
+
+    for (let i = 0; i < 11; i++) {
+        digitos.push(Math.floor(Math.random() * 10));
+    }
+
+    const suma = digitos.reduce(
+        (total, digito, i) => total + digito * (i % 2 === 0 ? 1 : 3),
+        0,
+    );
+
+    return digitos.join('') + ((10 - (suma % 10)) % 10);
 }
 
 export type DatosProducto = {
@@ -235,10 +313,11 @@ export type DatosProducto = {
     activo: boolean;
 };
 
+/** Alta o edición de un producto. Devuelve su id. */
 export async function guardarProducto(
     datos: DatosProducto,
     id?: number,
-): Promise<void> {
+): Promise<number> {
     const codigo = datos.codigo_interno.trim();
     const nombre = datos.nombre.trim();
     const costo = Number(datos.costo);
@@ -278,9 +357,14 @@ export async function guardarProducto(
         activo: datos.activo,
     };
 
-    const { error } = id
-        ? await supabase.from('productos').update(fila).eq('id', id)
-        : await supabase.from('productos').insert(fila);
+    const { data, error } = id
+        ? await supabase
+              .from('productos')
+              .update(fila)
+              .eq('id', id)
+              .select('id')
+              .single()
+        : await supabase.from('productos').insert(fila).select('id').single();
 
     if (error?.code === '23505') {
         throw new ErrorValidacion({
@@ -291,12 +375,14 @@ export async function guardarProducto(
     if (error) {
         fallar(error, 'No se pudo guardar el producto.');
     }
+
+    return data.id;
 }
 
 /**
- * Elimina un producto. Sus variantes, precios y stock se borran en
- * cascada. Si el producto ya tiene ventas o movimientos de stock, la
- * base no deja borrarlo (para no perder el historial).
+ * Elimina un producto con sus variantes, precios, stock y movimientos.
+ * Si ya se vendió, la base no deja borrarlo (para no perder el
+ * historial): hay que marcarlo como inactivo.
  */
 export async function eliminarProducto(id: number): Promise<string> {
     const { count } = await supabase
@@ -304,13 +390,9 @@ export async function eliminarProducto(id: number): Promise<string> {
         .select('id', { count: 'exact', head: true })
         .eq('producto_id', id);
 
-    const { error } = await supabase.from('productos').delete().eq('id', id);
-
-    if (error?.code === '23503') {
-        throw new Error(
-            'No se puede eliminar: el producto tiene ventas o movimientos de stock registrados. Podés marcarlo como inactivo.',
-        );
-    }
+    const { error } = await supabase.rpc('eliminar_producto', {
+        p_producto_id: id,
+    });
 
     if (error) {
         fallar(error, 'No se pudo eliminar el producto.');

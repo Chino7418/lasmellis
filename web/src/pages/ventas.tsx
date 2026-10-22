@@ -56,6 +56,7 @@ type Variante = {
     id: number;
     codigo_barras: string;
     codigo_interno: string | null;
+    activo: boolean;
     color?: { id: number; nombre: string } | null;
     talle?: { id: number; nombre: string } | null;
     precios: Precio[];
@@ -66,6 +67,7 @@ type Producto = {
     id: number;
     nombre: string;
     codigo_interno: string;
+    activo: boolean;
     variantes: Variante[];
 };
 
@@ -132,7 +134,6 @@ function descripcionVariante(color: string, talle: string): string {
 export default function Ventas() {
     useTitulo('Ventas');
 
-    const [depositos, setDepositos] = useState<Deposito[]>([]);
     const [depositoId, setDepositoId] = useState('');
 
     const [busquedaCliente, setBusquedaCliente] = useState('');
@@ -156,11 +157,11 @@ export default function Ventas() {
     const [procesando, setProcesando] = useState(false);
 
     useEffect(() => {
+        // El negocio no distingue depósitos: se usa siempre el primero
+        // (normalmente el único) sin mostrarlo.
         listarDepositos()
             .then((resultado: Deposito[]) => {
-                setDepositos(resultado);
-
-                if (resultado.length === 1) {
+                if (resultado.length > 0) {
                     setDepositoId(String(resultado[0].id));
                 }
             })
@@ -274,6 +275,14 @@ export default function Ventas() {
                 return;
             }
 
+            if (!producto.activo || !variante.activo) {
+                toast.error(
+                    `"${producto.nombre}" está marcado como inactivo: no está a la venta.`,
+                );
+
+                return;
+            }
+
             agregarAlCarrito(producto, variante);
         } catch {
             toast.error('Ocurrió un error al buscar el producto.');
@@ -360,7 +369,9 @@ export default function Ventas() {
 
     const confirmarVenta = async () => {
         if (!depositoId) {
-            toast.error('Elegí un depósito antes de confirmar la venta.');
+            toast.error(
+                'Todavía no se cargó el stock. Esperá un segundo y volvé a intentar.',
+            );
 
             return;
         }
@@ -420,32 +431,10 @@ export default function Ventas() {
             <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
                 {/* COLUMNA IZQUIERDA */}
                 <div className="flex min-w-0 flex-col gap-6">
-                    {/* DEPÓSITO Y CLIENTE */}
+                    {/* CLIENTE */}
                     <Tarjeta>
-                        <div className="grid gap-4 p-5 sm:grid-cols-2">
-                            <div className="grid gap-2">
-                                <Label>Depósito</Label>
-                                <Select
-                                    value={depositoId}
-                                    onValueChange={setDepositoId}
-                                >
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Elegir depósito" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {depositos.map((deposito) => (
-                                            <SelectItem
-                                                key={deposito.id}
-                                                value={String(deposito.id)}
-                                            >
-                                                {deposito.nombre}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="grid gap-2">
+                        <div className="p-5">
+                            <div className="grid gap-2 sm:max-w-md">
                                 <Label htmlFor="cliente">Cliente</Label>
 
                                 {clienteSeleccionado ? (
@@ -569,7 +558,13 @@ export default function Ventas() {
                         {!buscandoProducto && resultadosProducto.length > 0 && (
                             <ul className="max-h-80 divide-y overflow-y-auto border-t">
                                 {resultadosProducto.map((producto) =>
-                                    producto.variantes.map((variante) => {
+                                    // Solo lo que está a la venta.
+                                    (producto.activo
+                                        ? producto.variantes.filter(
+                                              (variante) => variante.activo,
+                                          )
+                                        : []
+                                    ).map((variante) => {
                                         const stock = stockEnDeposito(
                                             variante,
                                             depositoId,
