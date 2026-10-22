@@ -50,7 +50,7 @@ import {
     obtenerCatalogos,
 } from '@/lib/api';
 import type { ItemCatalogo, TablaCatalogo } from '@/lib/api';
-import { cantidad, dinero } from '@/lib/formato';
+import { cantidad, dinero, tituloProducto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 
 type Precio = {
@@ -588,9 +588,11 @@ export default function Productos() {
                                             />
 
                                             <div className="min-w-0">
-                                                <p className="flex items-center gap-2 truncate text-sm font-medium">
-                                                    <span className="truncate">
-                                                        {producto.nombre}
+                                                <p className="flex items-center gap-2 text-sm font-medium">
+                                                    <span className="line-clamp-2">
+                                                        {tituloProducto(
+                                                            producto,
+                                                        )}
                                                     </span>
                                                     {!producto.activo && (
                                                         <Badge variant="outline">

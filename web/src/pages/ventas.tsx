@@ -35,7 +35,12 @@ import {
     registrarVenta,
 } from '@/lib/api';
 import type { NuevaVenta } from '@/lib/api';
-import { cantidad, dinero, nombreCompleto } from '@/lib/formato';
+import {
+    cantidad,
+    dinero,
+    nombreCompleto,
+    tituloProducto,
+} from '@/lib/formato';
 import { cn } from '@/lib/utils';
 
 type Precio = {
@@ -66,6 +71,8 @@ type Variante = {
 type Producto = {
     id: number;
     nombre: string;
+    descripcion: string | null;
+    marca?: { id: number; nombre: string } | null;
     codigo_interno: string;
     activo: boolean;
     variantes: Variante[];
@@ -236,7 +243,7 @@ export default function Ventas() {
                 ...actual,
                 {
                     varianteId: variante.id,
-                    productoNombre: producto.nombre,
+                    productoNombre: tituloProducto(producto),
                     color: variante.color?.nombre ?? '-',
                     talle: variante.talle?.nombre ?? '-',
                     codigo: variante.codigo_barras,
@@ -247,7 +254,7 @@ export default function Ventas() {
             ];
         });
 
-        toast.success(`${producto.nombre} agregado al carrito.`);
+        toast.success(`${tituloProducto(producto)} agregado al carrito.`);
     };
 
     const manejarCodigoEscaneado = async (codigo: string) => {
@@ -587,8 +594,10 @@ export default function Ventas() {
                                                     className="hover:bg-muted/50 group flex w-full items-center gap-3 px-5 py-2.5 text-left transition-colors"
                                                 >
                                                     <span className="min-w-0 flex-1">
-                                                        <span className="block truncate text-sm font-medium">
-                                                            {producto.nombre}
+                                                        <span className="line-clamp-2 text-sm font-medium">
+                                                            {tituloProducto(
+                                                                producto,
+                                                            )}
                                                         </span>
                                                         {detalle && (
                                                             <span className="text-muted-foreground block truncate text-xs">
@@ -657,7 +666,7 @@ export default function Ventas() {
                                         className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-3.5"
                                     >
                                         <div className="min-w-[160px] flex-1">
-                                            <p className="truncate text-sm font-medium">
+                                            <p className="line-clamp-2 text-sm font-medium">
                                                 {item.productoNombre}
                                             </p>
                                             <p className="text-muted-foreground truncate text-xs">

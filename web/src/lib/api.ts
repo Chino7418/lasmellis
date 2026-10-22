@@ -88,7 +88,7 @@ export async function buscarProductos<T>(texto: string): Promise<T[]> {
         .from('productos')
         .select(PRODUCTO_SELECT)
         .or(
-            `nombre.ilike.${patron(texto)},codigo_interno.ilike.${patron(texto)}`,
+            `nombre.ilike.${patron(texto)},descripcion.ilike.${patron(texto)},codigo_interno.ilike.${patron(texto)}`,
         )
         .order('nombre');
 
@@ -571,15 +571,21 @@ export async function cargarSaldoAnterior(
     const ahora = new Date().toISOString().slice(0, 19);
     const notaLimpia = nota?.trim().slice(0, 200) || null;
 
-    const { error } = await supabase.from('movimientos_cuenta_corriente').insert({
-        cliente_id: clienteId,
-        tipo: 'debe',
-        importe: Math.round(monto * 100) / 100,
-        fecha: /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? `${fecha}T15:00:00` : ahora,
-        concepto: notaLimpia ? `Saldo anterior · ${notaLimpia}` : 'Saldo anterior',
-        created_at: ahora,
-        updated_at: ahora,
-    });
+    const { error } = await supabase
+        .from('movimientos_cuenta_corriente')
+        .insert({
+            cliente_id: clienteId,
+            tipo: 'debe',
+            importe: Math.round(monto * 100) / 100,
+            fecha: /^\d{4}-\d{2}-\d{2}$/.test(fecha)
+                ? `${fecha}T15:00:00`
+                : ahora,
+            concepto: notaLimpia
+                ? `Saldo anterior · ${notaLimpia}`
+                : 'Saldo anterior',
+            created_at: ahora,
+            updated_at: ahora,
+        });
 
     if (error) {
         fallar(error, 'No se pudo cargar el saldo anterior.');

@@ -47,3 +47,18 @@ export function nombreCompleto(persona: {
 }): string {
     return [persona.nombre, persona.apellido].filter(Boolean).join(' ');
 }
+
+/** "Marca - Nombre - Descripción", salteando lo que esté vacío. */
+export function tituloProducto(producto: {
+    nombre: string;
+    descripcion?: string | null;
+    marca?: { nombre: string } | null;
+}): string {
+    return [
+        producto.marca?.nombre,
+        producto.nombre,
+        producto.descripcion?.trim(),
+    ]
+        .filter(Boolean)
+        .join(' - ');
+}
