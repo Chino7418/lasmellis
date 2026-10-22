@@ -1,4 +1,5 @@
 import {
+    Check,
     ChevronRight,
     Package,
     Pencil,
@@ -6,6 +7,7 @@ import {
     ScanLine,
     Search,
     Trash2,
+    X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -36,6 +38,7 @@ import {
 import { useTitulo } from '@/hooks/use-titulo';
 import {
     buscarProductoPorCodigo,
+    crearMarca,
     eliminarProducto as eliminarProductoApi,
     ErrorValidacion,
     guardarProducto as guardarProductoApi,
@@ -170,6 +173,10 @@ export default function Productos() {
     const [escanerAbierto, setEscanerAbierto] = useState(false);
     const [escanerFormAbierto, setEscanerFormAbierto] = useState(false);
 
+    // null = selector normal; string = escribiendo una marca nueva.
+    const [marcaNueva, setMarcaNueva] = useState<string | null>(null);
+    const [creandoMarca, setCreandoMarca] = useState(false);
+
     const cargarProductos = () => {
         return listarProductos<Producto>()
             .then((resultado) => {
@@ -301,10 +308,51 @@ export default function Productos() {
         }
     };
 
+    const agregarMarca = async () => {
+        if (creandoMarca || marcaNueva === null) {
+            return;
+        }
+
+        setCreandoMarca(true);
+
+        try {
+            const { marca, yaExistia } = await crearMarca(marcaNueva);
+
+            setCatalogos((actual) => ({
+                ...actual,
+                marcas: yaExistia
+                    ? actual.marcas
+                    : [...actual.marcas, marca].sort((a, b) =>
+                          a.nombre.localeCompare(b.nombre, 'es'),
+                      ),
+            }));
+            setFormData((actual) => ({
+                ...actual,
+                marca_id: String(marca.id),
+            }));
+            setMarcaNueva(null);
+
+            toast.success(
+                yaExistia
+                    ? `La marca "${marca.nombre}" ya existía: quedó seleccionada.`
+                    : `Marca "${marca.nombre}" creada.`,
+            );
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : 'No se pudo crear la marca.',
+            );
+        } finally {
+            setCreandoMarca(false);
+        }
+    };
+
     const abrirNuevo = () => {
         setEditando(null);
         setFormData(formVacio);
         setErroresForm({});
+        setMarcaNueva(null);
         setFormAbierto(true);
     };
 
@@ -324,6 +372,7 @@ export default function Productos() {
             activo: producto.activo,
         });
         setErroresForm({});
+        setMarcaNueva(null);
         setFormAbierto(true);
     };
 
@@ -763,7 +812,16 @@ export default function Productos() {
 
             {/* FORMULARIO ALTA / EDICIÓN */}
             <Dialog open={formAbierto} onOpenChange={setFormAbierto}>
-                <DialogContent className="sm:max-w-lg">
+                <DialogContent
+                    className="sm:max-w-lg"
+                    onEscapeKeyDown={(evento) => {
+                        // Escribiendo una marca nueva, Escape cancela solo eso.
+                        if (marcaNueva !== null) {
+                            evento.preventDefault();
+                            setMarcaNueva(null);
+                        }
+                    }}
+                >
                     <DialogHeader>
                         <DialogTitle>
                             {editando ? 'Editar producto' : 'Nuevo producto'}
@@ -891,29 +949,90 @@ export default function Productos() {
                         </Campo>
 
                         <Campo label="Marca" opcional>
-                            <Select
-                                value={formData.marca_id}
-                                onValueChange={(valor) =>
-                                    setFormData((actual) => ({
-                                        ...actual,
-                                        marca_id: valor,
-                                    }))
-                                }
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Seleccionar" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {catalogos.marcas.map((item) => (
-                                        <SelectItem
-                                            key={item.id}
-                                            value={String(item.id)}
-                                        >
-                                            {item.nombre}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            {marcaNueva === null ? (
+                                <div className="flex gap-2">
+                                    <Select
+                                        value={formData.marca_id}
+                                        onValueChange={(valor) =>
+                                            setFormData((actual) => ({
+                                                ...actual,
+                                                marca_id: valor,
+                                            }))
+                                        }
+                                    >
+                                        <SelectTrigger className="w-full min-w-0">
+                                            <SelectValue placeholder="Seleccionar" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {catalogos.marcas.map((item) => (
+                                                <SelectItem
+                                                    key={item.id}
+                                                    value={String(item.id)}
+                                                >
+                                                    {item.nombre}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        className="shrink-0"
+                                        onClick={() => setMarcaNueva('')}
+                                        title="Agregar una marca nueva"
+                                    >
+                                        <Plus />
+                                    </Button>
+                                </div>
+                            ) : (
+                                <div className="flex gap-2">
+                                    <Input
+                                        autoFocus
+                                        value={marcaNueva}
+                                        placeholder="Nombre de la marca"
+                                        onChange={(evento) =>
+                                            setMarcaNueva(evento.target.value)
+                                        }
+                                        onKeyDown={(evento) => {
+                                            // Enter crea la marca (sin enviar el
+                                            // formulario del producto); Escape cancela.
+                                            if (evento.key === 'Enter') {
+                                                evento.preventDefault();
+                                                void agregarMarca();
+                                            }
+
+                                            if (evento.key === 'Escape') {
+                                                evento.preventDefault();
+                                                evento.stopPropagation();
+                                                setMarcaNueva(null);
+                                            }
+                                        }}
+                                        disabled={creandoMarca}
+                                    />
+                                    <Button
+                                        type="button"
+                                        size="icon"
+                                        className="shrink-0"
+                                        onClick={() => void agregarMarca()}
+                                        disabled={creandoMarca}
+                                        title="Guardar marca"
+                                    >
+                                        <Check />
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="shrink-0"
+                                        onClick={() => setMarcaNueva(null)}
+                                        disabled={creandoMarca}
+                                        title="Cancelar"
+                                    >
+                                        <X />
+                                    </Button>
+                                </div>
+                            )}
                         </Campo>
 
                         <Campo

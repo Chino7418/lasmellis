@@ -247,8 +247,10 @@ insert into categorias (nombre)
 values ('Ropa Interior'), ('Camisetas'), ('Medias'), ('Pijamas'), ('Ropa'), ('Accesorios')
 on conflict (nombre) do nothing;
 
+-- Las Mellis revende marcas de terceros: no hay marca propia. Las
+-- marcas se agregan desde el formulario de productos.
 insert into marcas (nombre)
-values ('Las Mellis'), ('Genérica')
+values ('Genérica')
 on conflict (nombre) do nothing;
 
 insert into colores (nombre, codigo_hex)

@@ -175,6 +175,56 @@ export async function obtenerCatalogos(): Promise<{
     };
 }
 
+/**
+ * Crea una marca y la devuelve. Si ya existe una con el mismo nombre
+ * (sin importar mayúsculas), devuelve esa en lugar de duplicarla.
+ */
+export async function crearMarca(
+    nombre: string,
+): Promise<{ marca: ItemCatalogo; yaExistia: boolean }> {
+    const limpio = nombre.trim().replace(/\s+/g, ' ');
+
+    if (!limpio) {
+        throw new Error('Escribí el nombre de la marca.');
+    }
+
+    if (limpio.length > 100) {
+        throw new Error('El nombre admite hasta 100 caracteres.');
+    }
+
+    // ilike sin comodines = comparación exacta sin distinguir mayúsculas.
+    const existente = await supabase
+        .from('marcas')
+        .select('id, nombre')
+        .ilike('nombre', limpio.replace(/[%_\\]/g, '\\$&'))
+        .limit(1)
+        .maybeSingle();
+
+    if (existente.error) {
+        fallar(existente.error, 'No se pudo crear la marca.');
+    }
+
+    if (existente.data) {
+        return { marca: existente.data, yaExistia: true };
+    }
+
+    const { data, error } = await supabase
+        .from('marcas')
+        .insert({ nombre: limpio })
+        .select('id, nombre')
+        .single();
+
+    if (error?.code === '23505') {
+        throw new Error(`Ya existe la marca "${limpio}".`);
+    }
+
+    if (error) {
+        fallar(error, 'No se pudo crear la marca.');
+    }
+
+    return { marca: data, yaExistia: false };
+}
+
 export type DatosProducto = {
     categoria_id: number | null;
     marca_id: number | null;

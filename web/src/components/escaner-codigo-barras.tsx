@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import wasmUrl from 'zxing-wasm/reader/zxing_reader.wasm?url';
 import {
     Dialog,
     DialogContent,
@@ -10,17 +11,16 @@ import {
 /*
  * ESCÁNER DE CÓDIGOS DE BARRAS
  *
- * Usa el lector nativo del navegador (BarcodeDetector) cuando existe
- * —Chrome en Android—, que es rápido y muy preciso. Si no existe
- * —Safari en iPhone, Firefox—, usa ZXing configurado solo con los
- * formatos de productos.
+ * Usa la API BarcodeDetector: la nativa del navegador cuando existe
+ * (Chrome en Android) y, si no (Safari en iPhone, Firefox), la de la
+ * librería barcode-detector, que corre ZXing-C++ compilado a
+ * WebAssembly y es muy buena leyendo códigos lineales.
  *
- * En ambos casos se pide la cámara trasera en alta resolución y con
- * enfoque continuo: los códigos de barras (las rayitas) necesitan
- * mucha más definición que un QR.
+ * Se pide la cámara trasera en alta resolución y con enfoque continuo:
+ * las rayitas de un código de barras necesitan mucha definición.
  */
 
-/** Formatos de códigos de productos (nombres de la API nativa). */
+/** Formatos de códigos de productos. */
 const FORMATOS = [
     'ean_13',
     'ean_8',
@@ -30,11 +30,10 @@ const FORMATOS = [
     'code_39',
     'itf',
     'qr_code',
-];
+] as const;
 
-const CADA_MS = 150;
+const CADA_MS = 120;
 
-/* Tipos mínimos de la API BarcodeDetector (no está en lib.dom). */
 type CodigoDetectado = { rawValue: string };
 type Detector = {
     detect: (fuente: HTMLVideoElement) => Promise<CodigoDetectado[]>;
@@ -88,24 +87,44 @@ async function abrirCamara(): Promise<MediaStream> {
     return stream;
 }
 
-/** Devuelve el detector nativo si el navegador lo tiene, o null. */
-async function crearDetectorNativo(): Promise<Detector | null> {
+/**
+ * Devuelve un detector y qué motor usa: el nativo del navegador si
+ * existe y soporta los formatos, o el de ZXing-C++ (WebAssembly).
+ */
+async function crearDetector(): Promise<{ detector: Detector; motor: string }> {
     const Nativo = (
         window as unknown as { BarcodeDetector?: ConstructorDetector }
     ).BarcodeDetector;
 
-    if (!Nativo) {
-        return null;
+    if (Nativo) {
+        try {
+            const soportados = await Nativo.getSupportedFormats();
+            const formats = FORMATOS.filter((f) => soportados.includes(f));
+
+            if (formats.length > 0) {
+                return { detector: new Nativo({ formats }), motor: 'nativo' };
+            }
+        } catch {
+            // Se usa el de respaldo.
+        }
     }
 
-    try {
-        const soportados = await Nativo.getSupportedFormats();
-        const formats = FORMATOS.filter((f) => soportados.includes(f));
+    // El motor de respaldo pesa ~1 MB: se descarga recién acá. El .wasm
+    // se sirve desde la propia app en lugar de un CDN externo.
+    const { BarcodeDetector, prepareZXingModule } =
+        await import('barcode-detector/ponyfill');
 
-        return formats.length > 0 ? new Nativo({ formats }) : null;
-    } catch {
-        return null;
-    }
+    prepareZXingModule({
+        overrides: {
+            locateFile: (ruta: string, prefijo: string) =>
+                ruta.endsWith('.wasm') ? wasmUrl : prefijo + ruta,
+        },
+    });
+
+    return {
+        detector: new BarcodeDetector({ formats: [...FORMATOS] }),
+        motor: 'ZXing-C++',
+    };
 }
 
 type Props = {
@@ -125,6 +144,7 @@ export default function EscanerCodigoBarras({
     const [video, setVideo] = useState<HTMLVideoElement | null>(null);
     const onDetectadoRef = useRef(onDetectado);
     const [errorCamara, setErrorCamara] = useState<string | null>(null);
+    const [diagnostico, setDiagnostico] = useState('');
 
     useEffect(() => {
         onDetectadoRef.current = onDetectado;
@@ -138,19 +158,9 @@ export default function EscanerCodigoBarras({
         let cancelado = false;
         let stream: MediaStream | null = null;
         let temporizador: ReturnType<typeof setTimeout> | undefined;
-        let detenerZxing: (() => void) | undefined;
 
         setErrorCamara(null);
-
-        const detectado = (codigo: string) => {
-            if (cancelado) {
-                return;
-            }
-
-            cancelado = true;
-            navigator.vibrate?.(80);
-            onDetectadoRef.current(codigo.trim());
-        };
+        setDiagnostico('Abriendo la cámara…');
 
         // Sin mediaDevices no hay cámara posible: pasa en http (no https)
         // y en navegadores internos de apps como Instagram o WhatsApp.
@@ -172,84 +182,56 @@ export default function EscanerCodigoBarras({
             video.srcObject = stream;
             await video.play();
 
-            const nativo = await crearDetectorNativo();
+            setDiagnostico('Cargando el lector…');
 
-            if (cancelado) {
-                return;
-            }
+            const { detector, motor } = await crearDetector();
 
-            if (nativo) {
-                const buscar = async () => {
-                    if (cancelado) {
-                        return;
-                    }
+            let intentos = 0;
+            let ultimoError = '';
 
+            const buscar = async () => {
+                if (cancelado) {
+                    return;
+                }
+
+                // Hasta que el video no tenga imagen no hay nada que leer.
+                if (video.readyState >= 2 && video.videoWidth > 0) {
                     try {
-                        const [codigo] = await nativo.detect(video);
+                        const [codigo] = await detector.detect(video);
+
+                        if (cancelado) {
+                            return;
+                        }
 
                         if (codigo?.rawValue) {
-                            detectado(codigo.rawValue);
+                            cancelado = true;
+                            navigator.vibrate?.(80);
+                            onDetectadoRef.current(codigo.rawValue.trim());
 
                             return;
                         }
-                    } catch {
-                        // Cuadro no listo todavía: se reintenta.
+
+                        intentos++;
+                    } catch (error) {
+                        ultimoError =
+                            error instanceof Error
+                                ? error.message
+                                : String(error);
                     }
 
-                    temporizador = setTimeout(buscar, CADA_MS);
-                };
+                    setDiagnostico(
+                        `Lector ${motor} · ${video.videoWidth}×${video.videoHeight} · ${intentos} lecturas${ultimoError ? ` · error: ${ultimoError}` : ''}`,
+                    );
+                }
 
-                void buscar();
+                temporizador = setTimeout(buscar, CADA_MS);
+            };
 
-                return;
-            }
-
-            // Sin lector nativo: ZXing. Es pesado, así que se descarga
-            // recién la primera vez que hace falta.
-            const [
-                { BrowserMultiFormatReader },
-                { BarcodeFormat, DecodeHintType },
-            ] = await Promise.all([
-                import('@zxing/browser'),
-                import('@zxing/library'),
-            ]);
-
-            const pistas = new Map();
-            pistas.set(DecodeHintType.POSSIBLE_FORMATS, [
-                BarcodeFormat.EAN_13,
-                BarcodeFormat.EAN_8,
-                BarcodeFormat.UPC_A,
-                BarcodeFormat.UPC_E,
-                BarcodeFormat.CODE_128,
-                BarcodeFormat.CODE_39,
-                BarcodeFormat.ITF,
-                BarcodeFormat.QR_CODE,
-            ]);
-            pistas.set(DecodeHintType.TRY_HARDER, true);
-
-            const lector = new BrowserMultiFormatReader(pistas, {
-                delayBetweenScanAttempts: CADA_MS,
-            });
-
-            const controles = await lector.decodeFromStream(
-                stream,
-                video,
-                (resultado) => {
-                    if (resultado) {
-                        detectado(resultado.getText());
-                    }
-                },
-            );
-
-            detenerZxing = () => controles.stop();
-
-            if (cancelado) {
-                detenerZxing();
-            }
+            void buscar();
         };
 
         iniciar().catch((error: unknown) => {
-            console.error('Error de cámara:', error);
+            console.error('Error del escáner:', error);
 
             if (!cancelado) {
                 setErrorCamara(mensajeDeError(error));
@@ -259,7 +241,6 @@ export default function EscanerCodigoBarras({
         return () => {
             cancelado = true;
             clearTimeout(temporizador);
-            detenerZxing?.();
             stream?.getTracks().forEach((pista) => pista.stop());
             video.srcObject = null;
         };
@@ -283,27 +264,27 @@ export default function EscanerCodigoBarras({
                 {/* El video está siempre montado (aunque oculto si hubo
                     error) para que al reabrir el escáner se vuelva a
                     intentar sin recargar la página. */}
-                <div
-                    className={
-                        errorCamara
-                            ? 'hidden'
-                            : 'relative overflow-hidden rounded-lg border bg-black'
-                    }
-                >
-                    <video
-                        ref={setVideo}
-                        className="aspect-video w-full object-cover"
-                        muted
-                        playsInline
-                        autoPlay
-                    />
+                <div className={errorCamara ? 'hidden' : 'space-y-2'}>
+                    <div className="relative overflow-hidden rounded-lg border bg-black">
+                        <video
+                            ref={setVideo}
+                            className="aspect-video w-full object-cover"
+                            muted
+                            playsInline
+                            autoPlay
+                        />
 
-                    {/* Guía para apuntar: recuadro con una línea roja al medio */}
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                        <div className="relative h-2/5 w-4/5 rounded-md border-2 border-white/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]">
-                            <div className="absolute inset-x-2 top-1/2 h-0.5 -translate-y-1/2 bg-red-500/80" />
+                        {/* Guía para apuntar: recuadro con una línea roja al medio */}
+                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                            <div className="relative h-2/5 w-4/5 rounded-md border-2 border-white/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]">
+                                <div className="absolute inset-x-2 top-1/2 h-0.5 -translate-y-1/2 bg-red-500/80" />
+                            </div>
                         </div>
                     </div>
+
+                    <p className="text-muted-foreground text-center text-xs">
+                        {diagnostico}
+                    </p>
                 </div>
             </DialogContent>
         </Dialog>
