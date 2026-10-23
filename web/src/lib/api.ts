@@ -673,3 +673,95 @@ export async function obtenerDashboard<T>(): Promise<T> {
 
     return data as T;
 }
+
+/* ------------------------------------------------------------------ */
+/* INGRESOS Y EGRESOS                                                 */
+/* ------------------------------------------------------------------ */
+
+export type MovimientoCaja = {
+    id: number;
+    tipo: 'ingreso' | 'egreso';
+    fecha: string;
+    monto: number | string;
+    categoria: string;
+    descripcion: string | null;
+};
+
+export type InformeCaja = {
+    cobrado_ventas: number;
+    cobrado_cuentas: number;
+    otros_ingresos: number;
+    total_ingresos: number;
+    total_egresos: number;
+    resultado: number;
+    por_categoria: {
+        tipo: 'ingreso' | 'egreso';
+        categoria: string;
+        total: number;
+    }[];
+    movimientos: MovimientoCaja[];
+};
+
+/** Informe entre dos días (AAAA-MM-DD, inclusive). */
+export async function obtenerInformeCaja(
+    desde: string,
+    hasta: string,
+): Promise<InformeCaja> {
+    const { data, error } = await supabase.rpc('informe_caja', {
+        p_desde: desde,
+        p_hasta: hasta,
+    });
+
+    if (error) {
+        fallar(error, 'No se pudo obtener el informe.');
+    }
+
+    return data as InformeCaja;
+}
+
+export async function registrarEgreso(datos: {
+    fecha: string;
+    monto: string;
+    categoria: string;
+    descripcion: string;
+}): Promise<void> {
+    const monto = Number(datos.monto);
+    const errores: Record<string, string[]> = {};
+
+    if (!(monto > 0) || monto >= 10_000_000_000) {
+        errores.monto = ['Ingresá un monto mayor a cero.'];
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(datos.fecha)) {
+        errores.fecha = ['Elegí la fecha.'];
+    }
+
+    if (!datos.categoria) {
+        errores.categoria = ['Elegí en qué se gastó.'];
+    }
+
+    validar(errores);
+
+    const { error } = await supabase.from('movimientos_caja').insert({
+        tipo: 'egreso',
+        fecha: datos.fecha,
+        monto: Math.round(monto * 100) / 100,
+        categoria: datos.categoria.slice(0, 50),
+        descripcion: datos.descripcion.trim().slice(0, 255) || null,
+    });
+
+    if (error) {
+        fallar(error, 'No se pudo registrar el egreso.');
+    }
+}
+
+export async function eliminarMovimientoCaja(id: number): Promise<void> {
+    const { error } = await supabase
+        .from('movimientos_caja')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        fallar(error, 'No se pudo eliminar el movimiento.');
+    }
+}

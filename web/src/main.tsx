@@ -10,6 +10,7 @@ import Login from '@/pages/auth/login';
 import OlvideMiClave from '@/pages/auth/olvide-mi-clave';
 import RestablecerClave from '@/pages/auth/restablecer-clave';
 import Clientes from '@/pages/clientes';
+import Caja from '@/pages/caja';
 import Configuracion from '@/pages/configuracion';
 import CuentasCorrientes from '@/pages/cuentas-corrientes';
 import Dashboard from '@/pages/dashboard';
@@ -34,6 +35,7 @@ const router = createBrowserRouter([
             { path: '/ventas', element: <Ventas /> },
             { path: '/clientes', element: <Clientes /> },
             { path: '/cuentas-corrientes', element: <CuentasCorrientes /> },
+            { path: '/ingresos-egresos', element: <Caja /> },
             { path: '/configuracion', element: <Configuracion /> },
         ],
     },

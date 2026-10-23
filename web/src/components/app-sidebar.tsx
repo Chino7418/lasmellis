@@ -1,4 +1,5 @@
 import {
+    ArrowLeftRight,
     BookUser,
     House,
     Package,
@@ -59,6 +60,11 @@ export function AppSidebar() {
             title: 'Cuentas corrientes',
             href: '/cuentas-corrientes',
             icon: BookUser,
+        },
+        {
+            title: 'Ingresos y egresos',
+            href: '/ingresos-egresos',
+            icon: ArrowLeftRight,
         },
     ];
 
