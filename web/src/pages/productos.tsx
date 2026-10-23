@@ -307,6 +307,22 @@ export default function Productos() {
         });
     }, [productos, busqueda, marcaFiltro]);
 
+    // Lo que hay en total entre los productos que se están viendo.
+    const totales = useMemo(() => {
+        const variantes = productosFiltrados.flatMap(
+            (producto) => producto.variantes,
+        );
+
+        return {
+            productos: productosFiltrados.length,
+            variantes: variantes.length,
+            unidades: variantes.reduce(
+                (suma, variante) => suma + stockDeVariante(variante).total,
+                0,
+            ),
+        };
+    }, [productosFiltrados]);
+
     const filtrando =
         busqueda.trim() !== '' || marcaFiltro !== TODAS_LAS_MARCAS;
 
@@ -544,14 +560,30 @@ export default function Productos() {
                             ))}
                         </SelectContent>
                     </Select>
-
-                    {!loading && (
-                        <span className="text-muted-foreground ml-auto text-sm">
-                            {productosFiltrados.length} producto
-                            {productosFiltrados.length !== 1 ? 's' : ''}
-                        </span>
-                    )}
                 </div>
+
+                {/* RESUMEN: lo que hay entre los productos que se ven */}
+                {!loading && (
+                    <dl className="bg-muted/30 grid grid-cols-3 divide-x border-b text-center">
+                        {[
+                            { titulo: 'Productos', valor: totales.productos },
+                            { titulo: 'Variantes', valor: totales.variantes },
+                            {
+                                titulo: 'Unidades en stock',
+                                valor: totales.unidades,
+                            },
+                        ].map((item) => (
+                            <div key={item.titulo} className="px-2 py-2.5">
+                                <dt className="text-muted-foreground text-xs">
+                                    {item.titulo}
+                                </dt>
+                                <dd className="text-lg font-semibold tabular-nums">
+                                    {cantidad(item.valor)}
+                                </dd>
+                            </div>
+                        ))}
+                    </dl>
+                )}
 
                 {loading && <FilasCargando />}
 
@@ -673,6 +705,13 @@ export default function Productos() {
                                                         .length !== 1
                                                         ? 's'
                                                         : ''}
+                                                    <span className="md:hidden">
+                                                        {' · '}
+                                                        {cantidad(
+                                                            stockTotal,
+                                                        )}{' '}
+                                                        en stock
+                                                    </span>
                                                 </p>
                                             </div>
 
