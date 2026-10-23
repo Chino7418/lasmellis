@@ -22,10 +22,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { generarCodigoInterno, guardarVariante } from '@/lib/api';
 import type { ItemCatalogo, TablaCatalogo } from '@/lib/api';
+import { dinero } from '@/lib/formato';
 
 export type VarianteEditable = {
     id: number;
     codigo_barras: string;
+    costo: string | number;
     activo: boolean;
     color?: ItemCatalogo | null;
     talle?: ItemCatalogo | null;
@@ -42,6 +44,7 @@ type Formulario = {
     talle_id: string;
     codigo_barras: string;
     precio: string;
+    costo: string;
     deposito_id: string;
     cantidad: string;
     stock_minimo: string;
@@ -77,6 +80,10 @@ function formularioInicial(
         talle_id: variante?.talle?.id ? String(variante.talle.id) : '',
         codigo_barras: variante?.codigo_barras ?? '',
         precio: precio !== undefined ? String(Number(precio)) : '',
+        costo:
+            variante && Number(variante.costo) > 0
+                ? String(Number(variante.costo))
+                : '',
         deposito_id: depositoId,
         ...stockDe(variante, depositoId),
         activo: variante?.activo ?? true,
@@ -116,6 +123,12 @@ export default function VarianteDialog({
     const [guardando, setGuardando] = useState(false);
     const [escanerAbierto, setEscanerAbierto] = useState(false);
 
+    // Ganancia por unidad, si están el precio y el costo.
+    const ganancia =
+        form.precio.trim() !== '' && Number(form.costo) > 0
+            ? Number(form.precio) - Number(form.costo)
+            : null;
+
     const cambiar = (cambios: Partial<Formulario>) =>
         setForm((actual) => ({ ...actual, ...cambios }));
 
@@ -146,6 +159,7 @@ export default function VarianteDialog({
                 talle_id: form.talle_id ? Number(form.talle_id) : null,
                 codigo_barras: form.codigo_barras.trim(),
                 precio: Number(form.precio),
+                costo: Number(form.costo) || 0,
                 deposito_id: Number(form.deposito_id),
                 cantidad: Number(form.cantidad) || 0,
                 stock_minimo: Number(form.stock_minimo) || 0,
@@ -285,7 +299,26 @@ export default function VarianteDialog({
                             />
                         </Campo>
 
-                        <div className="hidden sm:block" />
+                        <Campo id="costo" label="Costo" opcional>
+                            <Input
+                                id="costo"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                inputMode="decimal"
+                                value={form.costo}
+                                onChange={(evento) =>
+                                    cambiar({ costo: evento.target.value })
+                                }
+                            />
+                            {ganancia !== null && (
+                                <p className="text-muted-foreground text-xs">
+                                    Ganás {dinero(ganancia)} por unidad
+                                    {Number(form.precio) > 0 &&
+                                        ` (${Math.round((ganancia / Number(form.precio)) * 100)}%)`}
+                                </p>
+                            )}
+                        </Campo>
 
                         <Campo id="cantidad" label="Stock">
                             <Input

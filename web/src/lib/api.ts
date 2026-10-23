@@ -253,6 +253,7 @@ export type DatosVariante = {
     talle_id: number | null;
     codigo_barras: string;
     precio: number;
+    costo: number;
     deposito_id: number;
     cantidad: number;
     stock_minimo: number;
@@ -312,7 +313,6 @@ export type DatosProducto = {
     marca_id: number | null;
     nombre: string;
     descripcion: string | null;
-    costo: string;
     activo: boolean;
 };
 
@@ -322,7 +322,6 @@ export async function guardarProducto(
     id?: number,
 ): Promise<number> {
     const nombre = datos.nombre.trim();
-    const costo = Number(datos.costo);
     const errores: Record<string, string[]> = {};
 
     if (!datos.categoria_id) {
@@ -335,10 +334,6 @@ export async function guardarProducto(
         errores.nombre = ['El nombre admite hasta 150 caracteres.'];
     }
 
-    if (datos.costo.trim() === '' || Number.isNaN(costo) || costo < 0) {
-        errores.costo = ['Ingresá un costo válido (cero o mayor).'];
-    }
-
     validar(errores);
 
     const fila = {
@@ -346,7 +341,6 @@ export async function guardarProducto(
         marca_id: datos.marca_id,
         nombre,
         descripcion: datos.descripcion,
-        costo,
         activo: datos.activo,
     };
 

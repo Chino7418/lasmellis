@@ -84,6 +84,7 @@ type Variante = {
         id: number;
         nombre: string;
     } | null;
+    costo: string | number;
     precios: Precio[];
     stock: Stock[];
 };
@@ -93,7 +94,6 @@ type Producto = {
     codigo_interno: string;
     nombre: string;
     descripcion: string | null;
-    costo: string | number;
     activo: boolean;
     categoria?: {
         id: number;
@@ -123,7 +123,6 @@ type FormData = {
     marca_id: string;
     nombre: string;
     descripcion: string;
-    costo: string;
     activo: boolean;
 };
 
@@ -132,7 +131,6 @@ const formVacio: FormData = {
     marca_id: '',
     nombre: '',
     descripcion: '',
-    costo: '',
     activo: true,
 };
 
@@ -407,7 +405,6 @@ export default function Productos() {
             marca_id: producto.marca?.id ? String(producto.marca.id) : '',
             nombre: producto.nombre,
             descripcion: producto.descripcion ?? '',
-            costo: String(producto.costo),
             activo: producto.activo,
         });
         setErroresForm({});
@@ -431,7 +428,6 @@ export default function Productos() {
             marca_id: formData.marca_id ? Number(formData.marca_id) : null,
             nombre: formData.nombre,
             descripcion: formData.descripcion || null,
-            costo: formData.costo,
             activo: formData.activo,
         };
 
@@ -861,27 +857,6 @@ export default function Productos() {
                         </Campo>
 
                         <Campo
-                            id="costo"
-                            label="Costo"
-                            error={erroresForm.costo}
-                        >
-                            <Input
-                                id="costo"
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                inputMode="decimal"
-                                value={formData.costo}
-                                onChange={(evento) =>
-                                    setFormData((actual) => ({
-                                        ...actual,
-                                        costo: evento.target.value,
-                                    }))
-                                }
-                            />
-                        </Campo>
-
-                        <Campo
                             label="Categoría"
                             error={erroresForm.categoria_id}
                         >
@@ -1048,6 +1023,9 @@ function TablaVariantes({
                                     Código de barras
                                 </th>
                                 <th className="px-4 py-2.5 text-right font-medium">
+                                    Costo
+                                </th>
+                                <th className="px-4 py-2.5 text-right font-medium">
                                     Precio
                                 </th>
                                 <th className="px-4 py-2.5 text-right font-medium">
@@ -1088,6 +1066,11 @@ function TablaVariantes({
                                         </td>
                                         <td className="px-4 py-2 font-mono text-xs">
                                             {variante.codigo_barras}
+                                        </td>
+                                        <td className="text-muted-foreground px-4 py-2 text-right tabular-nums">
+                                            {Number(variante.costo) > 0
+                                                ? dinero(variante.costo)
+                                                : '—'}
                                         </td>
                                         <td className="px-4 py-2 text-right font-medium tabular-nums">
                                             {precio
