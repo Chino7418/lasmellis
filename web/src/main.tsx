@@ -15,6 +15,7 @@ import Configuracion from '@/pages/configuracion';
 import CuentasCorrientes from '@/pages/cuentas-corrientes';
 import Dashboard from '@/pages/dashboard';
 import Productos from '@/pages/productos';
+import StockCostos from '@/pages/stock-costos';
 import Ventas from '@/pages/ventas';
 import Welcome from '@/pages/welcome';
 import './app.css';
@@ -36,6 +37,7 @@ const router = createBrowserRouter([
             { path: '/clientes', element: <Clientes /> },
             { path: '/cuentas-corrientes', element: <CuentasCorrientes /> },
             { path: '/ingresos-egresos', element: <Caja /> },
+            { path: '/stock-costos', element: <StockCostos /> },
             { path: '/configuracion', element: <Configuracion /> },
         ],
     },

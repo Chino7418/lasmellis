@@ -311,26 +311,13 @@ export default function Productos() {
             (producto) => producto.variantes,
         );
 
-        let unidades = 0;
-        let valorVenta = 0;
-        let valorCosto = 0;
-
-        for (const variante of variantes) {
-            // Stock negativo (vendido de más) no suma plata.
-            const stock = Math.max(stockDeVariante(variante).total, 0);
-            const precio = variante.precios.find((item) => item.activo);
-
-            unidades += stock;
-            valorVenta += stock * Number(precio?.precio ?? 0);
-            valorCosto += stock * Number(variante.costo);
-        }
-
         return {
             productos: productosFiltrados.length,
             variantes: variantes.length,
-            unidades,
-            valorVenta,
-            valorCosto,
+            unidades: variantes.reduce(
+                (suma, variante) => suma + stockDeVariante(variante).total,
+                0,
+            ),
         };
     }, [productosFiltrados]);
 
@@ -573,7 +560,7 @@ export default function Productos() {
 
                 {/* RESUMEN: lo que hay entre los productos que se ven */}
                 {!loading && (
-                    <dl className="bg-muted/30 grid grid-cols-3 border-b text-center [&>div:not(:nth-child(3n+1))]:border-l">
+                    <dl className="bg-muted/30 grid grid-cols-3 divide-x border-b text-center">
                         {[
                             { titulo: 'Productos', valor: totales.productos },
                             { titulo: 'Variantes', valor: totales.variantes },
@@ -588,41 +575,6 @@ export default function Productos() {
                                 </dt>
                                 <dd className="text-lg font-semibold tabular-nums">
                                     {cantidad(item.valor)}
-                                </dd>
-                            </div>
-                        ))}
-
-                        {/* Plata: lo que vale el stock a precio de venta y lo que costó */}
-                        {[
-                            {
-                                titulo: 'Valor del stock',
-                                ayuda: 'a precio de venta',
-                                valor: totales.valorVenta,
-                            },
-                            {
-                                titulo: 'Costo del stock',
-                                ayuda: 'lo que te costó',
-                                valor: totales.valorCosto,
-                            },
-                            {
-                                titulo: 'Ganancia en stock',
-                                ayuda: 'si vendés todo',
-                                valor: totales.valorVenta - totales.valorCosto,
-                            },
-                        ].map((item) => (
-                            <div
-                                key={item.titulo}
-                                className="border-t px-2 py-2.5"
-                            >
-                                <dt className="text-muted-foreground text-xs">
-                                    {item.titulo}
-                                    <span className="hidden sm:inline">
-                                        {' '}
-                                        · {item.ayuda}
-                                    </span>
-                                </dt>
-                                <dd className="font-semibold tabular-nums sm:text-lg">
-                                    {dinero(item.valor)}
                                 </dd>
                             </div>
                         ))}

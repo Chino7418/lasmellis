@@ -1,6 +1,7 @@
 import {
     ArrowLeftRight,
     BookUser,
+    Boxes,
     House,
     Package,
     ShoppingCart,
@@ -65,6 +66,11 @@ export function AppSidebar() {
             title: 'Ingresos y egresos',
             href: '/ingresos-egresos',
             icon: ArrowLeftRight,
+        },
+        {
+            title: 'Stock y costos',
+            href: '/stock-costos',
+            icon: Boxes,
         },
     ];
 
