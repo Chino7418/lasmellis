@@ -328,6 +328,10 @@ export async function guardarProducto(
         errores.categoria_id = ['Elegí una categoría.'];
     }
 
+    if (!datos.marca_id) {
+        errores.marca_id = ['Elegí una marca (o creala desde la lista).'];
+    }
+
     if (!nombre) {
         errores.nombre = ['El nombre es obligatorio.'];
     } else if (nombre.length > 150) {

@@ -885,7 +885,7 @@ export default function Productos() {
                             </Select>
                         </Campo>
 
-                        <Campo label="Marca" opcional>
+                        <Campo label="Marca" error={erroresForm.marca_id}>
                             <SelectorCatalogo
                                 tabla="marcas"
                                 items={catalogos.marcas}
@@ -899,7 +899,6 @@ export default function Productos() {
                                 onCreado={(item) =>
                                     agregarAlCatalogo('marcas', item)
                                 }
-                                opcionVacia="Sin marca"
                             />
                         </Campo>
 
