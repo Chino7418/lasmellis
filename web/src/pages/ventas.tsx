@@ -8,7 +8,7 @@ import {
     User,
     X,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 import EscanerCodigoBarras from '@/components/escaner-codigo-barras';
@@ -29,14 +29,15 @@ import { Separator } from '@/components/ui/separator';
 import { useTitulo } from '@/hooks/use-titulo';
 import {
     buscarProductoPorCodigo,
-    buscarProductos,
     listarClientes,
     listarDepositos,
+    listarProductos,
     registrarVenta,
 } from '@/lib/api';
 import type { NuevaVenta } from '@/lib/api';
 import {
     cantidad,
+    coincideBusqueda,
     dinero,
     nombreCompleto,
     tituloProducto,
@@ -150,10 +151,10 @@ export default function Ventas() {
     const [buscandoCliente, setBuscandoCliente] = useState(false);
 
     const [busquedaProducto, setBusquedaProducto] = useState('');
-    const [resultadosProducto, setResultadosProducto] = useState<Producto[]>(
-        [],
-    );
-    const [buscandoProducto, setBuscandoProducto] = useState(false);
+    // Todo el catálogo se trae una vez y se filtra acá, igual que en
+    // Productos: así la búsqueda ignora acentos y encuentra por marca,
+    // color, talle o código.
+    const [productos, setProductos] = useState<Producto[] | null>(null);
     const [escanerAbierto, setEscanerAbierto] = useState(false);
 
     const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
@@ -201,29 +202,33 @@ export default function Ventas() {
         return () => clearTimeout(timeout);
     }, [busquedaCliente]);
 
-    // BÚSQUEDA DE PRODUCTO (con debounce)
-    useEffect(() => {
-        const texto = busquedaProducto.trim();
+    const cargarProductos = () => {
+        listarProductos<Producto>()
+            .then(setProductos)
+            .catch(() => {
+                setProductos([]);
+                toast.error('No se pudieron cargar los productos.');
+            });
+    };
 
-        const timeout = setTimeout(() => {
-            if (texto.length < 2) {
-                setResultadosProducto([]);
+    useEffect(cargarProductos, []);
 
-                return;
-            }
+    // BÚSQUEDA DE PRODUCTO: solo lo que está a la venta.
+    const textoProducto = busquedaProducto.trim();
+    const buscandoProducto = textoProducto.length >= 2 && productos === null;
 
-            setBuscandoProducto(true);
+    const resultadosProducto = useMemo(() => {
+        if (textoProducto.length < 2 || !productos) {
+            return [];
+        }
 
-            buscarProductos<Producto>(texto)
-                .then((resultado) => setResultadosProducto(resultado))
-                .catch(() => {
-                    toast.error('No se pudo buscar el producto.');
-                })
-                .finally(() => setBuscandoProducto(false));
-        }, 350);
-
-        return () => clearTimeout(timeout);
-    }, [busquedaProducto]);
+        return productos.filter(
+            (producto) =>
+                producto.activo &&
+                producto.variantes.some((variante) => variante.activo) &&
+                coincideBusqueda(producto, textoProducto),
+        );
+    }, [productos, textoProducto]);
 
     const agregarAlCarrito = (producto: Producto, variante: Variante) => {
         setCarrito((actual) => {
@@ -415,6 +420,8 @@ export default function Ventas() {
 
             toast.success(`Venta ${venta.numero} registrada.`);
             reiniciarVenta();
+            // El stock cambió: se vuelve a traer para mostrarlo al día.
+            cargarProductos();
         } catch (error) {
             toast.error(
                 error instanceof Error
@@ -562,76 +569,82 @@ export default function Ventas() {
                             </p>
                         )}
 
+                        {!buscandoProducto &&
+                            productos !== null &&
+                            textoProducto.length >= 2 &&
+                            resultadosProducto.length === 0 && (
+                                <p className="text-muted-foreground border-t px-5 py-3 text-sm">
+                                    No hay productos a la venta que coincidan
+                                    con "{textoProducto}".
+                                </p>
+                            )}
+
                         {!buscandoProducto && resultadosProducto.length > 0 && (
                             <ul className="max-h-80 divide-y overflow-y-auto border-t">
                                 {resultadosProducto.map((producto) =>
-                                    // Solo lo que está a la venta.
-                                    (producto.activo
-                                        ? producto.variantes.filter(
-                                              (variante) => variante.activo,
-                                          )
-                                        : []
-                                    ).map((variante) => {
-                                        const stock = stockEnDeposito(
-                                            variante,
-                                            depositoId,
-                                        );
-                                        const detalle = descripcionVariante(
-                                            variante.color?.nombre ?? '',
-                                            variante.talle?.nombre ?? '',
-                                        );
+                                    producto.variantes
+                                        .filter((variante) => variante.activo)
+                                        .map((variante) => {
+                                            const stock = stockEnDeposito(
+                                                variante,
+                                                depositoId,
+                                            );
+                                            const detalle = descripcionVariante(
+                                                variante.color?.nombre ?? '',
+                                                variante.talle?.nombre ?? '',
+                                            );
 
-                                        return (
-                                            <li key={variante.id}>
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        agregarAlCarrito(
-                                                            producto,
-                                                            variante,
-                                                        )
-                                                    }
-                                                    className="hover:bg-muted/50 group flex w-full items-center gap-3 px-5 py-2.5 text-left transition-colors"
-                                                >
-                                                    <span className="min-w-0 flex-1">
-                                                        <span className="line-clamp-2 text-sm font-medium">
-                                                            {tituloProducto(
+                                            return (
+                                                <li key={variante.id}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            agregarAlCarrito(
                                                                 producto,
+                                                                variante,
+                                                            )
+                                                        }
+                                                        className="hover:bg-muted/50 group flex w-full items-center gap-3 px-5 py-2.5 text-left transition-colors"
+                                                    >
+                                                        <span className="min-w-0 flex-1">
+                                                            <span className="line-clamp-2 text-sm font-medium">
+                                                                {tituloProducto(
+                                                                    producto,
+                                                                )}
+                                                            </span>
+                                                            {detalle && (
+                                                                <span className="text-muted-foreground block truncate text-xs">
+                                                                    {detalle}
+                                                                </span>
                                                             )}
                                                         </span>
-                                                        {detalle && (
-                                                            <span className="text-muted-foreground block truncate text-xs">
-                                                                {detalle}
-                                                            </span>
-                                                        )}
-                                                    </span>
 
-                                                    <Badge
-                                                        variant={
-                                                            stock > 0
-                                                                ? 'secondary'
-                                                                : 'danger'
-                                                        }
-                                                        className="tabular-nums"
-                                                    >
-                                                        {stock > 0
-                                                            ? `${cantidad(stock)} en stock`
-                                                            : 'Sin stock'}
-                                                    </Badge>
+                                                        <Badge
+                                                            variant={
+                                                                stock > 0
+                                                                    ? 'secondary'
+                                                                    : 'danger'
+                                                            }
+                                                            className="tabular-nums"
+                                                        >
+                                                            {stock > 0
+                                                                ? `${cantidad(stock)} en stock`
+                                                                : 'Sin stock'}
+                                                        </Badge>
 
-                                                    <span className="w-24 text-right text-sm font-medium tabular-nums">
-                                                        {dinero(
-                                                            precioActivo(
-                                                                variante,
-                                                            ),
-                                                        )}
-                                                    </span>
+                                                        <span className="w-24 text-right text-sm font-medium tabular-nums">
+                                                            {dinero(
+                                                                precioActivo(
+                                                                    variante,
+                                                                ),
+                                                            )}
+                                                        </span>
 
-                                                    <Plus className="text-muted-foreground group-hover:text-foreground size-4" />
-                                                </button>
-                                            </li>
-                                        );
-                                    }),
+                                                        <Plus className="text-muted-foreground group-hover:text-foreground size-4" />
+                                                    </button>
+                                                </li>
+                                            );
+                                        }),
                                 )}
                             </ul>
                         )}

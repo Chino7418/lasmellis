@@ -50,7 +50,12 @@ import {
     obtenerCatalogos,
 } from '@/lib/api';
 import type { ItemCatalogo, TablaCatalogo } from '@/lib/api';
-import { cantidad, dinero, tituloProducto } from '@/lib/formato';
+import {
+    cantidad,
+    coincideBusqueda,
+    dinero,
+    tituloProducto,
+} from '@/lib/formato';
 import { cn } from '@/lib/utils';
 
 type Precio = {
@@ -150,11 +155,6 @@ function stockDeVariante(variante: Variante) {
 }
 
 const TODAS_LAS_MARCAS = 'todas';
-
-/** Minúsculas y sin acentos, para comparar búsquedas. */
-function normalizar(texto: string): string {
-    return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-}
 
 export default function Productos() {
     useTitulo('Productos');
@@ -264,13 +264,7 @@ export default function Productos() {
         );
     };
 
-    // Cada palabra tiene que aparecer en algún dato del producto (marca,
-    // nombre, descripción, códigos, categoría, color o talle), sin
-    // importar acentos ni mayúsculas: "sweet encaje" encuentra
-    // "Sweet Lady - Corpiño - Encaje con aro".
     const productosFiltrados = useMemo(() => {
-        const palabras = normalizar(busqueda).split(/\s+/).filter(Boolean);
-
         return productos.filter((producto) => {
             if (
                 marcaFiltro !== TODAS_LAS_MARCAS &&
@@ -279,29 +273,7 @@ export default function Productos() {
                 return false;
             }
 
-            if (palabras.length === 0) {
-                return true;
-            }
-
-            const datos = normalizar(
-                [
-                    producto.marca?.nombre,
-                    producto.nombre,
-                    producto.descripcion,
-                    producto.codigo_interno,
-                    producto.categoria?.nombre,
-                    ...producto.variantes.flatMap((variante) => [
-                        variante.codigo_barras,
-                        variante.codigo_interno,
-                        variante.color?.nombre,
-                        variante.talle?.nombre,
-                    ]),
-                ]
-                    .filter(Boolean)
-                    .join(' '),
-            );
-
-            return palabras.every((palabra) => datos.includes(palabra));
+            return coincideBusqueda(producto, busqueda);
         });
     }, [productos, busqueda, marcaFiltro]);
 

@@ -62,3 +62,59 @@ export function tituloProducto(producto: {
         .filter(Boolean)
         .join(' - ');
 }
+
+/** Minúsculas y sin acentos, para comparar búsquedas. */
+export function normalizar(texto: string): string {
+    return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
+type ProductoBuscable = {
+    nombre: string;
+    descripcion?: string | null;
+    codigo_interno?: string | null;
+    marca?: { nombre: string } | null;
+    categoria?: { nombre: string } | null;
+    variantes: {
+        codigo_barras?: string | null;
+        codigo_interno?: string | null;
+        color?: { nombre: string } | null;
+        talle?: { nombre: string } | null;
+    }[];
+};
+
+/**
+ * Cada palabra tiene que aparecer en algún dato del producto (marca,
+ * nombre, descripción, códigos, categoría, color o talle), sin importar
+ * acentos ni mayúsculas: "sweet encaje" encuentra
+ * "Sweet Lady - Corpiño - Encaje con aro".
+ */
+export function coincideBusqueda(
+    producto: ProductoBuscable,
+    busqueda: string,
+): boolean {
+    const palabras = normalizar(busqueda).split(/\s+/).filter(Boolean);
+
+    if (palabras.length === 0) {
+        return true;
+    }
+
+    const datos = normalizar(
+        [
+            producto.marca?.nombre,
+            producto.nombre,
+            producto.descripcion,
+            producto.codigo_interno,
+            producto.categoria?.nombre,
+            ...producto.variantes.flatMap((variante) => [
+                variante.codigo_barras,
+                variante.codigo_interno,
+                variante.color?.nombre,
+                variante.talle?.nombre,
+            ]),
+        ]
+            .filter(Boolean)
+            .join(' '),
+    );
+
+    return palabras.every((palabra) => datos.includes(palabra));
+}

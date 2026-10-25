@@ -83,22 +83,6 @@ export async function listarProductos<T>(): Promise<T[]> {
     return data as T[];
 }
 
-export async function buscarProductos<T>(texto: string): Promise<T[]> {
-    const { data, error } = await supabase
-        .from('productos')
-        .select(PRODUCTO_SELECT)
-        .or(
-            `nombre.ilike.${patron(texto)},descripcion.ilike.${patron(texto)},codigo_interno.ilike.${patron(texto)}`,
-        )
-        .order('nombre');
-
-    if (error) {
-        fallar(error, 'No se pudo buscar el producto.');
-    }
-
-    return data as T[];
-}
-
 /**
  * Busca un producto por su código interno o por el código de barras de
  * alguna de sus variantes. Devuelve null si no existe.
