@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Campo } from '@/components/campo';
+import { CampoCodigoBarras } from '@/components/campo-codigo-barras';
 import EscanerCodigoBarras from '@/components/escaner-codigo-barras';
 import { EstadoError, EstadoVacio, FilasCargando } from '@/components/estados';
 import { Page, PageHeader } from '@/components/page-header';
@@ -41,6 +42,7 @@ import {
 import { useTitulo } from '@/hooks/use-titulo';
 import {
     buscarProductoPorCodigo,
+    codigoBarrasEnUso,
     eliminarProducto as eliminarProductoApi,
     eliminarVariante as eliminarVarianteApi,
     ErrorValidacion,
@@ -124,6 +126,8 @@ type Catalogos = {
 };
 
 type FormData = {
+    /** Solo al crear: es el de la primera variante. */
+    codigo_barras: string;
     categoria_id: string;
     marca_id: string;
     nombre: string;
@@ -132,6 +136,7 @@ type FormData = {
 };
 
 const formVacio: FormData = {
+    codigo_barras: '',
     categoria_id: '',
     marca_id: '',
     nombre: '',
@@ -187,6 +192,7 @@ export default function Productos() {
     const [formVariante, setFormVariante] = useState<{
         producto: { id: number; nombre: string };
         variante: Variante | null;
+        codigoInicial?: string;
     } | null>(null);
 
     const cargarProductos = () => {
@@ -371,6 +377,7 @@ export default function Productos() {
 
         setEditando(producto);
         setFormData({
+            codigo_barras: '',
             categoria_id: producto.categoria?.id
                 ? String(producto.categoria.id)
                 : '',
@@ -390,6 +397,41 @@ export default function Productos() {
     };
 
     const guardarProducto = async () => {
+        const codigo = formData.codigo_barras.trim();
+
+        // Al crear, primero el código: si ya existe no se crea nada.
+        if (!editando) {
+            if (!codigo) {
+                setErroresForm({
+                    codigo_barras: [
+                        'Escaneá el código o tocá la varita para generar uno.',
+                    ],
+                });
+
+                return;
+            }
+
+            try {
+                const enUso = await codigoBarrasEnUso(codigo);
+
+                if (enUso) {
+                    toast.error(
+                        `Ese código de barras ya está cargado en ${enUso.codigo_interno}.`,
+                    );
+
+                    return;
+                }
+            } catch (error) {
+                toast.error(
+                    error instanceof Error
+                        ? error.message
+                        : 'No se pudo revisar el código de barras.',
+                );
+
+                return;
+            }
+        }
+
         setGuardando(true);
         setErroresForm({});
 
@@ -414,12 +456,14 @@ export default function Productos() {
             await cargarProductos();
 
             // Un producto sin variantes no se puede vender: al crearlo se
-            // abre directamente el alta de su primera variante.
+            // abre directamente el alta de su primera variante, con el
+            // código que ya se escaneó.
             if (esNuevo) {
                 setAbiertos((actuales) => [...actuales, id]);
                 setFormVariante({
                     producto: { id, nombre: payload.nombre.trim() },
                     variante: null,
+                    codigoInicial: codigo,
                 });
             }
         } catch (error) {
@@ -796,6 +840,33 @@ export default function Productos() {
                             void guardarProducto();
                         }}
                     >
+                        {!editando && (
+                            <Campo
+                                id="codigo_barras"
+                                label="Código de barras"
+                                error={erroresForm.codigo_barras}
+                                className="sm:col-span-2"
+                            >
+                                <CampoCodigoBarras
+                                    id="codigo_barras"
+                                    autoFocus
+                                    valor={formData.codigo_barras}
+                                    onCambio={(valor) =>
+                                        setFormData((actual) => ({
+                                            ...actual,
+                                            codigo_barras: valor,
+                                        }))
+                                    }
+                                    onVerProducto={(enUso) => {
+                                        cerrarForm();
+                                        void buscarPorCodigoExacto(
+                                            enUso.codigo_interno,
+                                        );
+                                    }}
+                                />
+                            </Campo>
+                        )}
+
                         <Campo
                             id="nombre"
                             label="Nombre"
@@ -804,7 +875,7 @@ export default function Productos() {
                         >
                             <Input
                                 id="nombre"
-                                autoFocus
+                                autoFocus={!!editando}
                                 value={formData.nombre}
                                 onChange={(evento) =>
                                     setFormData((actual) => ({
@@ -952,6 +1023,7 @@ export default function Productos() {
                     talles={catalogos.talles}
                     depositos={depositos}
                     onCatalogoCreado={agregarAlCatalogo}
+                    codigoInicial={formVariante.codigoInicial}
                 />
             )}
         </Page>

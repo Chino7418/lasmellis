@@ -193,10 +193,10 @@ export default function Dashboard() {
                         titulo="Últimas ventas"
                         accion={
                             <Link
-                                to="/ventas"
+                                to="/ventas/historial"
                                 className="text-muted-foreground hover:text-foreground text-sm font-medium"
                             >
-                                Nueva venta
+                                Ver todas
                             </Link>
                         }
                         className="lg:col-span-2"

@@ -17,6 +17,7 @@ import Dashboard from '@/pages/dashboard';
 import Productos from '@/pages/productos';
 import StockCostos from '@/pages/stock-costos';
 import Ventas from '@/pages/ventas';
+import VentasHistorial from '@/pages/ventas-historial';
 import Welcome from '@/pages/welcome';
 import './app.css';
 
@@ -34,6 +35,7 @@ const router = createBrowserRouter([
             { path: '/dashboard', element: <Navigate to="/inicio" replace /> },
             { path: '/productos', element: <Productos /> },
             { path: '/ventas', element: <Ventas /> },
+            { path: '/ventas/historial', element: <VentasHistorial /> },
             { path: '/clientes', element: <Clientes /> },
             { path: '/cuentas-corrientes', element: <CuentasCorrientes /> },
             { path: '/ingresos-egresos', element: <Caja /> },

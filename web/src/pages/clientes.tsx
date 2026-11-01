@@ -1,27 +1,14 @@
 import { Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Campo } from '@/components/campo';
+import ClienteDialog from '@/components/cliente-dialog';
 import { EstadoError, EstadoVacio, FilasCargando } from '@/components/estados';
 import { Page, PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useTitulo } from '@/hooks/use-titulo';
-import {
-    darDeBajaCliente,
-    ErrorValidacion,
-    guardarCliente as guardarClienteApi,
-    listarClientes,
-} from '@/lib/api';
+import { darDeBajaCliente, listarClientes } from '@/lib/api';
 import { dinero, nombreCompleto } from '@/lib/formato';
 
 type Cliente = {
@@ -37,26 +24,6 @@ type Cliente = {
     saldo: number | string;
 };
 
-type FormData = {
-    nombre: string;
-    apellido: string;
-    documento: string;
-    telefono: string;
-    email: string;
-    direccion: string;
-    observaciones: string;
-};
-
-const formVacio: FormData = {
-    nombre: '',
-    apellido: '',
-    documento: '',
-    telefono: '',
-    email: '',
-    direccion: '',
-    observaciones: '',
-};
-
 const COLUMNAS = 'md:grid-cols-[minmax(0,1fr)_130px_150px_140px_88px]';
 
 export default function Clientes() {
@@ -69,11 +36,6 @@ export default function Clientes() {
 
     const [formAbierto, setFormAbierto] = useState(false);
     const [editando, setEditando] = useState<Cliente | null>(null);
-    const [formData, setFormData] = useState<FormData>(formVacio);
-    const [erroresForm, setErroresForm] = useState<Record<string, string[]>>(
-        {},
-    );
-    const [guardando, setGuardando] = useState(false);
 
     const cargarClientes = () => {
         return listarClientes<Cliente>()
@@ -111,76 +73,19 @@ export default function Clientes() {
         });
     }, [clientes, busqueda]);
 
-    const actualizarCampo = (campo: keyof FormData, valor: string) => {
-        setFormData((actual) => ({ ...actual, [campo]: valor }));
-    };
-
     const abrirNuevo = () => {
         setEditando(null);
-        setFormData(formVacio);
-        setErroresForm({});
         setFormAbierto(true);
     };
 
     const abrirEditar = (cliente: Cliente) => {
         setEditando(cliente);
-        setFormData({
-            nombre: cliente.nombre,
-            apellido: cliente.apellido ?? '',
-            documento: cliente.documento ?? '',
-            telefono: cliente.telefono ?? '',
-            email: cliente.email ?? '',
-            direccion: cliente.direccion ?? '',
-            observaciones: cliente.observaciones ?? '',
-        });
-        setErroresForm({});
         setFormAbierto(true);
     };
 
     const cerrarForm = () => {
         setFormAbierto(false);
         setEditando(null);
-        setErroresForm({});
-    };
-
-    const guardarCliente = async () => {
-        setGuardando(true);
-        setErroresForm({});
-
-        const payload = {
-            nombre: formData.nombre,
-            apellido: formData.apellido || null,
-            documento: formData.documento || null,
-            telefono: formData.telefono || null,
-            email: formData.email || null,
-            direccion: formData.direccion || null,
-            observaciones: formData.observaciones || null,
-        };
-
-        try {
-            await guardarClienteApi(payload, editando?.id);
-
-            toast.success(
-                editando ? 'Cliente actualizado.' : 'Cliente creado.',
-            );
-            cerrarForm();
-            await cargarClientes();
-        } catch (error) {
-            if (error instanceof ErrorValidacion) {
-                setErroresForm(error.errores);
-                toast.error(error.message);
-
-                return;
-            }
-
-            toast.error(
-                error instanceof Error
-                    ? error.message
-                    : 'Ocurrió un error inesperado.',
-            );
-        } finally {
-            setGuardando(false);
-        }
     };
 
     const eliminarCliente = async (cliente: Cliente) => {
@@ -364,167 +269,18 @@ export default function Clientes() {
             </section>
 
             {/* FORMULARIO ALTA / EDICIÓN */}
-            <Dialog open={formAbierto} onOpenChange={setFormAbierto}>
-                <DialogContent className="sm:max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle>
-                            {editando ? 'Editar cliente' : 'Nuevo cliente'}
-                        </DialogTitle>
-                        <DialogDescription>
-                            {editando
-                                ? 'Modificá los datos del cliente.'
-                                : 'Completá los datos para crear un cliente.'}
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <form
-                        id="form-cliente"
-                        className="grid gap-4 sm:grid-cols-2"
-                        onSubmit={(evento) => {
-                            evento.preventDefault();
-                            void guardarCliente();
-                        }}
-                    >
-                        <Campo
-                            id="nombre"
-                            label="Nombre"
-                            error={erroresForm.nombre}
-                        >
-                            <Input
-                                id="nombre"
-                                autoFocus
-                                value={formData.nombre}
-                                onChange={(evento) =>
-                                    actualizarCampo(
-                                        'nombre',
-                                        evento.target.value,
-                                    )
-                                }
-                            />
-                        </Campo>
-
-                        <Campo id="apellido" label="Apellido" opcional>
-                            <Input
-                                id="apellido"
-                                value={formData.apellido}
-                                onChange={(evento) =>
-                                    actualizarCampo(
-                                        'apellido',
-                                        evento.target.value,
-                                    )
-                                }
-                            />
-                        </Campo>
-
-                        <Campo
-                            id="documento"
-                            label="Documento"
-                            opcional
-                            error={erroresForm.documento}
-                        >
-                            <Input
-                                id="documento"
-                                inputMode="numeric"
-                                value={formData.documento}
-                                onChange={(evento) =>
-                                    actualizarCampo(
-                                        'documento',
-                                        evento.target.value,
-                                    )
-                                }
-                            />
-                        </Campo>
-
-                        <Campo id="telefono" label="Teléfono" opcional>
-                            <Input
-                                id="telefono"
-                                type="tel"
-                                value={formData.telefono}
-                                onChange={(evento) =>
-                                    actualizarCampo(
-                                        'telefono',
-                                        evento.target.value,
-                                    )
-                                }
-                            />
-                        </Campo>
-
-                        <Campo
-                            id="email"
-                            label="Email"
-                            opcional
-                            error={erroresForm.email}
-                            className="sm:col-span-2"
-                        >
-                            <Input
-                                id="email"
-                                type="email"
-                                value={formData.email}
-                                onChange={(evento) =>
-                                    actualizarCampo(
-                                        'email',
-                                        evento.target.value,
-                                    )
-                                }
-                            />
-                        </Campo>
-
-                        <Campo
-                            id="direccion"
-                            label="Dirección"
-                            opcional
-                            className="sm:col-span-2"
-                        >
-                            <Input
-                                id="direccion"
-                                value={formData.direccion}
-                                onChange={(evento) =>
-                                    actualizarCampo(
-                                        'direccion',
-                                        evento.target.value,
-                                    )
-                                }
-                            />
-                        </Campo>
-
-                        <Campo
-                            id="observaciones"
-                            label="Observaciones"
-                            opcional
-                            className="sm:col-span-2"
-                        >
-                            <Input
-                                id="observaciones"
-                                value={formData.observaciones}
-                                onChange={(evento) =>
-                                    actualizarCampo(
-                                        'observaciones',
-                                        evento.target.value,
-                                    )
-                                }
-                            />
-                        </Campo>
-                    </form>
-
-                    <DialogFooter>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={cerrarForm}
-                            disabled={guardando}
-                        >
-                            Cancelar
-                        </Button>
-                        <Button
-                            type="submit"
-                            form="form-cliente"
-                            disabled={guardando}
-                        >
-                            {guardando ? 'Guardando...' : 'Guardar'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            {formAbierto && (
+                <ClienteDialog
+                    key={editando?.id ?? 'nuevo'}
+                    abierto
+                    cliente={editando}
+                    onCerrar={cerrarForm}
+                    onGuardado={() => {
+                        cerrarForm();
+                        void cargarClientes();
+                    }}
+                />
+            )}
         </Page>
     );
 }

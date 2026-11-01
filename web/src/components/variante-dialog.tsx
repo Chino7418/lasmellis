@@ -1,9 +1,8 @@
-import { ScanLine, Wand2 } from 'lucide-react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { toast } from 'sonner';
 import { Campo } from '@/components/campo';
-import EscanerCodigoBarras from '@/components/escaner-codigo-barras';
+import { CampoCodigoBarras } from '@/components/campo-codigo-barras';
 import {
     evitarCierreSiCreando,
     SelectorCatalogo,
@@ -20,8 +19,8 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { generarCodigoInterno, guardarVariante } from '@/lib/api';
-import type { ItemCatalogo, TablaCatalogo } from '@/lib/api';
+import { guardarVariante } from '@/lib/api';
+import type { CodigoEnUso, ItemCatalogo, TablaCatalogo } from '@/lib/api';
 import { dinero } from '@/lib/formato';
 
 export type VarianteEditable = {
@@ -69,6 +68,7 @@ function stockDe(variante: VarianteEditable | null, depositoId: string) {
 function formularioInicial(
     variante: VarianteEditable | null,
     depositos: ItemCatalogo[],
+    codigoInicial: string,
 ): Formulario {
     const depositoId = String(
         variante?.stock[0]?.deposito?.id ?? depositos[0]?.id ?? '',
@@ -78,7 +78,7 @@ function formularioInicial(
     return {
         color_id: variante?.color?.id ? String(variante.color.id) : '',
         talle_id: variante?.talle?.id ? String(variante.talle.id) : '',
-        codigo_barras: variante?.codigo_barras ?? '',
+        codigo_barras: variante?.codigo_barras ?? codigoInicial,
         precio: precio !== undefined ? String(Number(precio)) : '',
         costo:
             variante && Number(variante.costo) > 0
@@ -105,6 +105,7 @@ export default function VarianteDialog({
     talles,
     depositos,
     onCatalogoCreado,
+    codigoInicial = '',
 }: {
     abierto: boolean;
     onCerrar: () => void;
@@ -116,12 +117,14 @@ export default function VarianteDialog({
     talles: ItemCatalogo[];
     depositos: ItemCatalogo[];
     onCatalogoCreado: (tabla: TablaCatalogo, item: ItemCatalogo) => void;
+    /** Código ya cargado al crear el producto (solo variante nueva). */
+    codigoInicial?: string;
 }) {
     const [form, setForm] = useState<Formulario>(() =>
-        formularioInicial(variante, depositos),
+        formularioInicial(variante, depositos, codigoInicial),
     );
     const [guardando, setGuardando] = useState(false);
-    const [escanerAbierto, setEscanerAbierto] = useState(false);
+    const [enUso, setEnUso] = useState<CodigoEnUso | null>(null);
 
     // Ganancia por unidad, si están el precio y el costo.
     const ganancia =
@@ -138,6 +141,14 @@ export default function VarianteDialog({
         if (!form.codigo_barras.trim()) {
             toast.error(
                 'Falta el código de barras: escanealo o tocá la varita para generar uno.',
+            );
+
+            return;
+        }
+
+        if (enUso) {
+            toast.error(
+                `Ese código de barras ya está cargado en ${enUso.codigo_interno}.`,
             );
 
             return;
@@ -203,6 +214,23 @@ export default function VarianteDialog({
                         className="grid gap-4 sm:grid-cols-2"
                         onSubmit={guardar}
                     >
+                        <Campo
+                            id="codigo_barras"
+                            label="Código de barras"
+                            className="sm:col-span-2"
+                        >
+                            <CampoCodigoBarras
+                                id="codigo_barras"
+                                autoFocus={!variante && !codigoInicial}
+                                valor={form.codigo_barras}
+                                onCambio={(valor) =>
+                                    cambiar({ codigo_barras: valor })
+                                }
+                                onEnUso={setEnUso}
+                                exceptoVarianteId={variante?.id}
+                            />
+                        </Campo>
+
                         <Campo label="Color">
                             <SelectorCatalogo
                                 tabla="colores"
@@ -231,58 +259,6 @@ export default function VarianteDialog({
                                 }
                                 opcionVacia="Sin talle"
                             />
-                        </Campo>
-
-                        <Campo
-                            id="codigo_barras"
-                            label="Código de barras"
-                            className="sm:col-span-2"
-                        >
-                            <div className="flex gap-2">
-                                <Input
-                                    id="codigo_barras"
-                                    className="font-mono"
-                                    value={form.codigo_barras}
-                                    placeholder="Escaneá el código de la etiqueta"
-                                    onChange={(evento) =>
-                                        cambiar({
-                                            codigo_barras: evento.target.value,
-                                        })
-                                    }
-                                    onKeyDown={(evento) => {
-                                        // El lector físico manda Enter al final:
-                                        // no tiene que guardar el formulario.
-                                        if (evento.key === 'Enter') {
-                                            evento.preventDefault();
-                                        }
-                                    }}
-                                />
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    className="shrink-0"
-                                    onClick={() => setEscanerAbierto(true)}
-                                    title="Escanear con la cámara"
-                                >
-                                    <ScanLine />
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    className="shrink-0"
-                                    onClick={() =>
-                                        cambiar({
-                                            codigo_barras:
-                                                generarCodigoInterno(),
-                                        })
-                                    }
-                                    title="Generar un código (para prendas sin código de barras)"
-                                >
-                                    <Wand2 />
-                                </Button>
-                            </div>
                         </Campo>
 
                         <Campo id="precio" label="Precio de venta">
@@ -388,16 +364,6 @@ export default function VarianteDialog({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-
-            <EscanerCodigoBarras
-                abierto={escanerAbierto}
-                onCerrar={() => setEscanerAbierto(false)}
-                onDetectado={(codigo) => {
-                    setEscanerAbierto(false);
-                    cambiar({ codigo_barras: codigo });
-                    toast.success('Código escaneado.');
-                }}
-            />
         </>
     );
 }

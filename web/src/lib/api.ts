@@ -258,6 +258,67 @@ export async function guardarVariante(datos: DatosVariante): Promise<void> {
     }
 }
 
+export type CodigoEnUso = {
+    producto_id: number;
+    codigo_interno: string;
+    titulo: string;
+};
+
+/**
+ * Si el código de barras ya lo tiene otra variante, devuelve de qué
+ * producto es; si está libre, null. `exceptoVarianteId` es la variante
+ * que se está editando (su propio código no cuenta como repetido).
+ */
+export async function codigoBarrasEnUso(
+    codigo: string,
+    exceptoVarianteId?: number,
+): Promise<CodigoEnUso | null> {
+    let consulta = supabase
+        .from('variantes_productos')
+        .select(
+            'id, producto:productos ( id, codigo_interno, nombre, descripcion, marca:marcas ( nombre ) )',
+        )
+        .eq('codigo_barras', codigo.trim());
+
+    if (exceptoVarianteId) {
+        consulta = consulta.neq('id', exceptoVarianteId);
+    }
+
+    const { data, error } = await consulta
+        .limit(1)
+        .returns<
+            {
+                id: number;
+                producto: {
+                    id: number;
+                    codigo_interno: string;
+                    nombre: string;
+                    descripcion: string | null;
+                    marca: { nombre: string } | null;
+                };
+            }[]
+        >()
+        .maybeSingle();
+
+    if (error) {
+        fallar(error, 'No se pudo revisar el código de barras.');
+    }
+
+    if (!data) {
+        return null;
+    }
+
+    const { producto } = data;
+
+    return {
+        producto_id: producto.id,
+        codigo_interno: producto.codigo_interno,
+        titulo: [producto.marca?.nombre, producto.nombre, producto.descripcion]
+            .filter(Boolean)
+            .join(' - '),
+    };
+}
+
 export async function eliminarVariante(id: number): Promise<void> {
     const { error } = await supabase.rpc('eliminar_variante', {
         p_variante_id: id,
@@ -411,10 +472,17 @@ export type DatosCliente = {
     observaciones: string | null;
 };
 
+export type ClienteGuardado = {
+    id: number;
+    nombre: string;
+    apellido: string | null;
+    documento: string | null;
+};
+
 export async function guardarCliente(
     datos: DatosCliente,
     id?: number,
-): Promise<void> {
+): Promise<ClienteGuardado> {
     const errores: Record<string, string[]> = {};
 
     if (!datos.nombre.trim()) {
@@ -432,10 +500,20 @@ export async function guardarCliente(
     validar(errores);
 
     const fila = { ...datos, nombre: datos.nombre.trim() };
+    const columnas = 'id, nombre, apellido, documento';
 
-    const { error } = id
-        ? await supabase.from('clientes').update(fila).eq('id', id)
-        : await supabase.from('clientes').insert({ ...fila, activo: true });
+    const { data, error } = id
+        ? await supabase
+              .from('clientes')
+              .update(fila)
+              .eq('id', id)
+              .select(columnas)
+              .single()
+        : await supabase
+              .from('clientes')
+              .insert({ ...fila, activo: true })
+              .select(columnas)
+              .single();
 
     if (error?.code === '23505') {
         throw new ErrorValidacion({
@@ -446,6 +524,8 @@ export async function guardarCliente(
     if (error) {
         fallar(error, 'No se pudo guardar el cliente.');
     }
+
+    return data;
 }
 
 /**
@@ -631,6 +711,61 @@ export async function registrarVenta(
     }
 
     return data;
+}
+
+export type VentaHistorial = {
+    id: number;
+    numero: string;
+    fecha: string;
+    total: number;
+    descuento: number;
+    tipo_pago: string;
+    estado: 'completada' | 'anulada';
+    observaciones: string | null;
+    anulada_at: string | null;
+    motivo_anulacion: string | null;
+    cliente: string | null;
+    detalles: {
+        id: number;
+        producto: string;
+        variante: string | null;
+        cantidad: number;
+        precio_unitario: number;
+        subtotal: number;
+    }[];
+    pagos: { medio_pago: string; monto: number }[];
+};
+
+/** Ventas entre dos días (AAAA-MM-DD, inclusive), la más nueva primero. */
+export async function listarVentas(
+    desde: string,
+    hasta: string,
+): Promise<VentaHistorial[]> {
+    const { data, error } = await supabase.rpc('listar_ventas', {
+        p_desde: desde,
+        p_hasta: hasta,
+    });
+
+    if (error) {
+        fallar(error, 'No se pudieron obtener las ventas.');
+    }
+
+    return data as VentaHistorial[];
+}
+
+/**
+ * Anula la venta: devuelve el stock y cancela la deuda que haya
+ * generado (ver anular_venta en supabase/migrations).
+ */
+export async function anularVenta(id: number, motivo: string): Promise<void> {
+    const { error } = await supabase.rpc('anular_venta', {
+        p_venta_id: id,
+        p_motivo: motivo.trim() || null,
+    });
+
+    if (error) {
+        fallar(error, 'No se pudo anular la venta.');
+    }
 }
 
 /* ------------------------------------------------------------------ */

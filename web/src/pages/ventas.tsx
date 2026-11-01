@@ -4,13 +4,17 @@ import {
     ScanLine,
     Search,
     ShoppingCart,
+    History,
     Trash2,
     User,
+    UserPlus,
     X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { Link } from 'react-router';
 import { toast } from 'sonner';
+import ClienteDialog from '@/components/cliente-dialog';
 import EscanerCodigoBarras from '@/components/escaner-codigo-barras';
 import { EstadoVacio } from '@/components/estados';
 import { Page, PageHeader } from '@/components/page-header';
@@ -149,6 +153,7 @@ export default function Ventas() {
     const [clienteSeleccionado, setClienteSeleccionado] =
         useState<Cliente | null>(null);
     const [buscandoCliente, setBuscandoCliente] = useState(false);
+    const [clienteNuevoAbierto, setClienteNuevoAbierto] = useState(false);
 
     const [busquedaProducto, setBusquedaProducto] = useState('');
     // Todo el catálogo se trae una vez y se filtra acá, igual que en
@@ -440,6 +445,14 @@ export default function Ventas() {
             <PageHeader
                 title="Nueva venta"
                 description="Agregá productos, elegí el cliente y cobrá"
+                actions={
+                    <Button variant="outline" asChild>
+                        <Link to="/ventas/historial">
+                            <History />
+                            Historial
+                        </Link>
+                    </Button>
+                }
             />
 
             <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -475,60 +488,77 @@ export default function Ventas() {
                                         </Button>
                                     </div>
                                 ) : (
-                                    <div className="relative">
-                                        <Input
-                                            id="cliente"
-                                            value={busquedaCliente}
-                                            onChange={(evento) =>
-                                                setBusquedaCliente(
-                                                    evento.target.value,
-                                                )
-                                            }
-                                            placeholder="Consumidor Final"
-                                            autoComplete="off"
-                                        />
-
-                                        {(resultadosCliente.length > 0 ||
-                                            buscandoCliente) && (
-                                            <div className="bg-popover absolute z-20 mt-1 w-full overflow-hidden rounded-md border shadow-md">
-                                                {buscandoCliente ? (
-                                                    <p className="text-muted-foreground px-3 py-2 text-sm">
-                                                        Buscando...
-                                                    </p>
-                                                ) : (
-                                                    resultadosCliente.map(
-                                                        (cliente) => (
-                                                            <button
-                                                                key={cliente.id}
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setClienteSeleccionado(
-                                                                        cliente,
-                                                                    );
-                                                                    setResultadosCliente(
-                                                                        [],
-                                                                    );
-                                                                }}
-                                                                className="hover:bg-accent flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm"
-                                                            >
-                                                                <span className="truncate">
-                                                                    {nombreCompleto(
-                                                                        cliente,
-                                                                    )}
-                                                                </span>
-                                                                {cliente.documento && (
-                                                                    <span className="text-muted-foreground shrink-0 text-xs">
-                                                                        {
-                                                                            cliente.documento
-                                                                        }
-                                                                    </span>
-                                                                )}
-                                                            </button>
-                                                        ),
+                                    <div className="flex gap-2">
+                                        <div className="relative min-w-0 flex-1">
+                                            <Input
+                                                id="cliente"
+                                                value={busquedaCliente}
+                                                onChange={(evento) =>
+                                                    setBusquedaCliente(
+                                                        evento.target.value,
                                                     )
-                                                )}
-                                            </div>
-                                        )}
+                                                }
+                                                placeholder="Consumidor Final"
+                                                autoComplete="off"
+                                            />
+
+                                            {(resultadosCliente.length > 0 ||
+                                                buscandoCliente) && (
+                                                <div className="bg-popover absolute z-20 mt-1 w-full overflow-hidden rounded-md border shadow-md">
+                                                    {buscandoCliente ? (
+                                                        <p className="text-muted-foreground px-3 py-2 text-sm">
+                                                            Buscando...
+                                                        </p>
+                                                    ) : (
+                                                        resultadosCliente.map(
+                                                            (cliente) => (
+                                                                <button
+                                                                    key={
+                                                                        cliente.id
+                                                                    }
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setClienteSeleccionado(
+                                                                            cliente,
+                                                                        );
+                                                                        setResultadosCliente(
+                                                                            [],
+                                                                        );
+                                                                    }}
+                                                                    className="hover:bg-accent flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm"
+                                                                >
+                                                                    <span className="truncate">
+                                                                        {nombreCompleto(
+                                                                            cliente,
+                                                                        )}
+                                                                    </span>
+                                                                    {cliente.documento && (
+                                                                        <span className="text-muted-foreground shrink-0 text-xs">
+                                                                            {
+                                                                                cliente.documento
+                                                                            }
+                                                                        </span>
+                                                                    )}
+                                                                </button>
+                                                            ),
+                                                        )
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="icon"
+                                            className="shrink-0"
+                                            onClick={() => {
+                                                setResultadosCliente([]);
+                                                setClienteNuevoAbierto(true);
+                                            }}
+                                            title="Crear un cliente nuevo"
+                                        >
+                                            <UserPlus />
+                                        </Button>
                                     </div>
                                 )}
                             </div>
@@ -1001,6 +1031,24 @@ export default function Ventas() {
                 onCerrar={() => setEscanerAbierto(false)}
                 onDetectado={manejarCodigoEscaneado}
             />
+
+            {clienteNuevoAbierto && (
+                <ClienteDialog
+                    abierto
+                    cliente={null}
+                    // Lo que se escribió buscando es casi siempre el nombre.
+                    nombreInicial={
+                        /\d/.test(busquedaCliente) ? '' : busquedaCliente.trim()
+                    }
+                    onCerrar={() => setClienteNuevoAbierto(false)}
+                    onGuardado={(cliente) => {
+                        setClienteNuevoAbierto(false);
+                        setClienteSeleccionado(cliente);
+                        setBusquedaCliente('');
+                        setResultadosCliente([]);
+                    }}
+                />
+            )}
         </Page>
     );
 }

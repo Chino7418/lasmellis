@@ -40,7 +40,13 @@ import {
     registrarEgreso,
 } from '@/lib/api';
 import type { InformeCaja } from '@/lib/api';
-import { dinero } from '@/lib/formato';
+import {
+    aTexto,
+    dinero,
+    fechaDe,
+    hoyEnArgentina,
+    rangoDelMes,
+} from '@/lib/formato';
 import { cn } from '@/lib/utils';
 
 const CATEGORIAS_EGRESO = [
@@ -62,35 +68,6 @@ const diaCorto = new Intl.DateTimeFormat('es-AR', {
     day: 'numeric',
     month: 'short',
 });
-
-/** Fecha de hoy en Argentina, AAAA-MM-DD. */
-function hoyEnArgentina(): string {
-    return new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/Argentina/Buenos_Aires',
-    }).format(new Date());
-}
-
-function aTexto(fecha: Date): string {
-    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
-    const dia = String(fecha.getDate()).padStart(2, '0');
-
-    return `${fecha.getFullYear()}-${mes}-${dia}`;
-}
-
-/** Primer y último día del mes (AAAA-MM-DD). */
-function rangoDelMes(mes: Date): { desde: string; hasta: string } {
-    return {
-        desde: aTexto(new Date(mes.getFullYear(), mes.getMonth(), 1)),
-        hasta: aTexto(new Date(mes.getFullYear(), mes.getMonth() + 1, 0)),
-    };
-}
-
-/** Un día AAAA-MM-DD como fecha local (sin correrse por la zona). */
-function fechaDe(dia: string): Date {
-    const [anio, mes, numero] = dia.split('-').map(Number);
-
-    return new Date(anio, mes - 1, numero);
-}
 
 export default function Caja() {
     useTitulo('Ingresos y egresos');

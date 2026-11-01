@@ -118,3 +118,32 @@ export function coincideBusqueda(
 
     return palabras.every((palabra) => datos.includes(palabra));
 }
+
+/** Fecha de hoy en Argentina, AAAA-MM-DD. */
+export function hoyEnArgentina(): string {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+    }).format(new Date());
+}
+
+export function aTexto(fecha: Date): string {
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dia = String(fecha.getDate()).padStart(2, '0');
+
+    return `${fecha.getFullYear()}-${mes}-${dia}`;
+}
+
+/** Primer y último día del mes (AAAA-MM-DD). */
+export function rangoDelMes(mes: Date): { desde: string; hasta: string } {
+    return {
+        desde: aTexto(new Date(mes.getFullYear(), mes.getMonth(), 1)),
+        hasta: aTexto(new Date(mes.getFullYear(), mes.getMonth() + 1, 0)),
+    };
+}
+
+/** Un día AAAA-MM-DD como fecha local (sin correrse por la zona). */
+export function fechaDe(dia: string): Date {
+    const [anio, mes, numero] = dia.split('-').map(Number);
+
+    return new Date(anio, mes - 1, numero);
+}
