@@ -1,5 +1,6 @@
 import {
     BookUser,
+    FileDown,
     MessageCircle,
     NotebookPen,
     Search,
@@ -38,6 +39,7 @@ import {
 } from '@/lib/api';
 import type { MovimientoCuenta } from '@/lib/api';
 import { dinero, fechaHora, nombreCompleto, tipoPago } from '@/lib/formato';
+import { descargarPdf, fechaArchivo } from '@/lib/informes';
 import { cn } from '@/lib/utils';
 
 type Cliente = {
@@ -121,11 +123,64 @@ export default function CuentasCorrientes() {
             .sort((a, b) => Number(b.saldo) - Number(a.saldo));
     }, [clientes, busqueda, soloDeudores]);
 
+    const [descargando, setDescargando] = useState(false);
+
+    // Lo que se ve en la lista (respeta "Con deuda / Todos" y la búsqueda).
+    const descargarSaldosPdf = async () => {
+        setDescargando(true);
+
+        const total = visibles.reduce(
+            (suma, cliente) => suma + Number(cliente.saldo),
+            0,
+        );
+
+        try {
+            await descargarPdf({
+                archivo: `saldos-cuentas-corrientes-${fechaArchivo()}`,
+                titulo: 'Saldos de cuentas corrientes',
+                subtitulo: soloDeudores
+                    ? `${visibles.length} cliente${visibles.length !== 1 ? 's' : ''} con deuda`
+                    : `${visibles.length} cliente${visibles.length !== 1 ? 's' : ''}`,
+                columnas: [
+                    { titulo: 'Cliente' },
+                    { titulo: 'Teléfono', ancho: 38 },
+                    { titulo: 'DNI', ancho: 28 },
+                    { titulo: 'Saldo', ancho: 34, alinear: 'right' },
+                ],
+                filas: visibles.map((cliente) => [
+                    nombreCompleto(cliente),
+                    cliente.telefono ?? '—',
+                    cliente.documento ?? '—',
+                    Number(cliente.saldo) > 0
+                        ? dinero(cliente.saldo)
+                        : 'Al día',
+                ]),
+                pie: ['Total adeudado', '', '', dinero(total)],
+            });
+        } catch {
+            toast.error('No se pudo generar el PDF.');
+        } finally {
+            setDescargando(false);
+        }
+    };
+
     return (
         <Page>
             <PageHeader
                 title="Cuentas corrientes"
                 description="Lo que debe cada cliente y el registro de sus pagos"
+                actions={
+                    <Button
+                        variant="outline"
+                        onClick={descargarSaldosPdf}
+                        disabled={
+                            loading || visibles.length === 0 || descargando
+                        }
+                    >
+                        <FileDown />
+                        {descargando ? 'Generando...' : 'Descargar PDF'}
+                    </Button>
+                }
             />
 
             {error && <EstadoError mensaje={error} />}

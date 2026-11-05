@@ -1,6 +1,5 @@
 import {
     AlertTriangle,
-    Boxes,
     CircleDollarSign,
     Package,
     PiggyBank,
@@ -72,8 +71,8 @@ function porcentaje(valor: number | null): string {
     return valor === null ? '—' : `${Math.round(valor * 100)}%`;
 }
 
-export default function StockCostos() {
-    useTitulo('Stock y costos');
+export default function StockValorizado() {
+    useTitulo('Stock valorizado');
 
     const [productos, setProductos] = useState<Producto[]>([]);
     const [loading, setLoading] = useState(true);
@@ -133,19 +132,14 @@ export default function StockCostos() {
     return (
         <Page>
             <PageHeader
-                title="Stock y costos"
+                title="Stock valorizado"
                 description="Cuánta plata hay en mercadería: a precio de venta y a lo que costó"
             />
 
             {error && <EstadoError mensaje={error} />}
 
             {/* TOTALES */}
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <Total
-                    icon={Boxes}
-                    titulo="Unidades en stock"
-                    valor={loading ? null : cantidad(total.unidades)}
-                />
+            <div className="grid gap-4 sm:grid-cols-3">
                 <Total
                     icon={CircleDollarSign}
                     titulo="Valor del stock"

@@ -2,6 +2,7 @@ import {
     ArrowLeftRight,
     BookUser,
     Boxes,
+    CircleDollarSign,
     House,
     Package,
     ShoppingCart,
@@ -44,6 +45,11 @@ export function AppSidebar() {
             title: 'Productos',
             href: '/productos',
             icon: Package,
+        },
+        {
+            title: 'Stock',
+            href: '/stock',
+            icon: Boxes,
             badge: sinStock,
             badgeLabel: `${sinStock} sin stock`,
         },
@@ -68,9 +74,9 @@ export function AppSidebar() {
             icon: ArrowLeftRight,
         },
         {
-            title: 'Stock y costos',
-            href: '/stock-costos',
-            icon: Boxes,
+            title: 'Stock valorizado',
+            href: '/stock-valorizado',
+            icon: CircleDollarSign,
         },
     ];
 

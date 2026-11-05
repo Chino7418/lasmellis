@@ -15,7 +15,8 @@ const TITULOS: Record<string, string> = {
     '/clientes': 'Clientes',
     '/cuentas-corrientes': 'Cuentas corrientes',
     '/ingresos-egresos': 'Ingresos y egresos',
-    '/stock-costos': 'Stock y costos',
+    '/stock': 'Stock',
+    '/stock-valorizado': 'Stock valorizado',
     '/configuracion': 'Configuración',
 };
 

@@ -1,7 +1,6 @@
 import {
     CalendarDays,
     CheckCircle2,
-    PackageX,
     Plus,
     Receipt,
     ShoppingCart,
@@ -38,13 +37,6 @@ type Venta = {
     tipo_pago: string;
 };
 
-type SinStock = {
-    variante_id: number;
-    producto: string;
-    color: string | null;
-    talle: string | null;
-};
-
 type Deudor = {
     id: number;
     nombre: string;
@@ -60,7 +52,6 @@ type DashboardData = {
     mes_actual: Totales;
     por_mes: VentasMes[];
     total_general: Totales;
-    stock: { sin_stock: SinStock[] };
     cuenta_corriente: {
         clientes_con_deuda: number;
         total_deuda: number;
@@ -121,11 +112,6 @@ export default function Dashboard() {
             />
 
             {error && <EstadoError mensaje={error} />}
-
-            {/* AVISO: SIN STOCK */}
-            {data && data.stock.sin_stock.length > 0 && (
-                <AvisoSinStock items={data.stock.sin_stock} />
-            )}
 
             {/* INDICADORES */}
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -289,40 +275,6 @@ export default function Dashboard() {
                 </div>
             )}
         </Page>
-    );
-}
-
-function AvisoSinStock({ items }: { items: SinStock[] }) {
-    const visibles = items.slice(0, 5);
-
-    return (
-        <div className="border-warning/30 bg-warning-soft flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-start">
-            <PackageX className="text-warning size-5 shrink-0" />
-            <div className="min-w-0 flex-1 text-sm">
-                <p className="font-medium">
-                    {items.length === 1
-                        ? 'Hay 1 producto sin stock'
-                        : `Hay ${items.length} productos sin stock`}
-                </p>
-                <p className="text-muted-foreground mt-0.5">
-                    {visibles
-                        .map((item) =>
-                            [item.producto, item.color, item.talle]
-                                .filter(Boolean)
-                                .join(' · '),
-                        )
-                        .join(' — ')}
-                    {items.length > visibles.length &&
-                        ` y ${items.length - visibles.length} más`}
-                </p>
-            </div>
-            <Link
-                to="/productos"
-                className="text-foreground shrink-0 text-sm font-medium underline-offset-4 hover:underline"
-            >
-                Cargar stock
-            </Link>
-        </div>
     );
 }
 

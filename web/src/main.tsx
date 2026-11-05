@@ -15,7 +15,8 @@ import Configuracion from '@/pages/configuracion';
 import CuentasCorrientes from '@/pages/cuentas-corrientes';
 import Dashboard from '@/pages/dashboard';
 import Productos from '@/pages/productos';
-import StockCostos from '@/pages/stock-costos';
+import Stock from '@/pages/stock';
+import StockValorizado from '@/pages/stock-valorizado';
 import Ventas from '@/pages/ventas';
 import VentasHistorial from '@/pages/ventas-historial';
 import Welcome from '@/pages/welcome';
@@ -39,7 +40,12 @@ const router = createBrowserRouter([
             { path: '/clientes', element: <Clientes /> },
             { path: '/cuentas-corrientes', element: <CuentasCorrientes /> },
             { path: '/ingresos-egresos', element: <Caja /> },
-            { path: '/stock-costos', element: <StockCostos /> },
+            { path: '/stock', element: <Stock /> },
+            { path: '/stock-valorizado', element: <StockValorizado /> },
+            {
+                path: '/stock-costos',
+                element: <Navigate to="/stock-valorizado" replace />,
+            },
             { path: '/configuracion', element: <Configuracion /> },
         ],
     },
