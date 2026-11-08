@@ -81,8 +81,15 @@ export function CampoCodigoBarras({
                     ? null
                     : resultado,
             );
-        } catch {
+        } catch (error) {
+            // Que no quede en silencio: si no se pudo revisar, se avisa
+            // (y al volver a escanear se reintenta).
             revisado.current = null;
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : 'No se pudo revisar el código de barras.',
+            );
         }
     };
 
