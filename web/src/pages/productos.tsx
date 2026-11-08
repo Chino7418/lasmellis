@@ -1,4 +1,6 @@
 import {
+    Archive,
+    ArchiveRestore,
     ChevronRight,
     Copy,
     Package,
@@ -45,8 +47,10 @@ import {
 } from '@/components/ui/select';
 import { useTitulo } from '@/hooks/use-titulo';
 import {
+    archivarProducto,
     buscarProductoPorCodigo,
     codigoBarrasEnUso,
+    contarVentasDeProducto,
     eliminarProducto as eliminarProductoApi,
     eliminarVariante as eliminarVarianteApi,
     ErrorValidacion,
@@ -192,6 +196,13 @@ export default function Productos() {
     });
     const [busqueda, setBusqueda] = useState('');
     const [marcaFiltro, setMarcaFiltro] = useState(TODAS_LAS_MARCAS);
+    // Archivados = inactivos: no se venden pero guardan su historial.
+    const [verArchivados, setVerArchivados] = useState(false);
+    // Producto con ventas que se quiso borrar: se ofrece archivarlo.
+    const [conVentas, setConVentas] = useState<{
+        producto: Producto;
+        ventas: number;
+    } | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [abiertos, setAbiertos] = useState<number[]>([]);
@@ -312,6 +323,10 @@ export default function Productos() {
 
     const productosFiltrados = useMemo(() => {
         return productos.filter((producto) => {
+            if (producto.activo === verArchivados) {
+                return false;
+            }
+
             if (
                 marcaFiltro !== TODAS_LAS_MARCAS &&
                 String(producto.marca?.id ?? '') !== marcaFiltro
@@ -321,7 +336,7 @@ export default function Productos() {
 
             return coincideBusqueda(producto, busqueda);
         });
-    }, [productos, busqueda, marcaFiltro]);
+    }, [productos, busqueda, marcaFiltro, verArchivados]);
 
     // Lo que hay en total entre los productos que se están viendo.
     const totales = useMemo(() => {
@@ -372,6 +387,8 @@ export default function Productos() {
                     : [...actuales, encontrado];
             });
 
+            // Si estaba archivado, se muestra igual (en Archivados).
+            setVerArchivados(!encontrado.activo);
             setBusqueda(encontrado.codigo_interno);
             setAbiertos((actuales) =>
                 actuales.includes(encontrado.id)
@@ -530,6 +547,26 @@ export default function Productos() {
     ) => {
         evento.stopPropagation();
 
+        // Si ya se vendió no se puede borrar (se perdería qué se vendió
+        // en esas ventas): en vez de un error, se ofrece archivarlo.
+        try {
+            const ventas = await contarVentasDeProducto(producto.id);
+
+            if (ventas > 0) {
+                setConVentas({ producto, ventas });
+
+                return;
+            }
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : 'Ocurrió un error inesperado.',
+            );
+
+            return;
+        }
+
         const confirmado = window.confirm(
             `¿Eliminar "${producto.nombre}"? Esta acción no se puede deshacer.`,
         );
@@ -540,6 +577,25 @@ export default function Productos() {
 
         try {
             toast.success(await eliminarProductoApi(producto.id));
+            await cargarProductos();
+        } catch (error) {
+            toast.error(
+                error instanceof Error
+                    ? error.message
+                    : 'Ocurrió un error inesperado.',
+            );
+        }
+    };
+
+    const cambiarArchivado = async (producto: Producto, archivar: boolean) => {
+        try {
+            await archivarProducto(producto.id, archivar);
+            toast.success(
+                archivar
+                    ? `"${producto.nombre}" archivado: ya no aparece para vender. Lo encontrás en Archivados.`
+                    : `"${producto.nombre}" vuelve a estar a la venta.`,
+            );
+            setConVentas(null);
             await cargarProductos();
         } catch (error) {
             toast.error(
@@ -590,6 +646,28 @@ export default function Productos() {
                     >
                         <ScanLine />
                     </Button>
+
+                    <div className="bg-muted flex rounded-full p-1 text-sm">
+                        {[
+                            { valor: false, texto: 'Activos' },
+                            { valor: true, texto: 'Archivados' },
+                        ].map((opcion) => (
+                            <button
+                                key={opcion.texto}
+                                type="button"
+                                onClick={() => setVerArchivados(opcion.valor)}
+                                className={cn(
+                                    'rounded-full px-3 py-1 transition-colors',
+                                    verArchivados === opcion.valor
+                                        ? 'bg-card shadow-xs font-medium'
+                                        : 'text-muted-foreground hover:text-foreground',
+                                )}
+                                aria-pressed={verArchivados === opcion.valor}
+                            >
+                                {opcion.texto}
+                            </button>
+                        ))}
+                    </div>
 
                     <Select value={marcaFiltro} onValueChange={setMarcaFiltro}>
                         <SelectTrigger
@@ -645,7 +723,9 @@ export default function Productos() {
                         title={
                             filtrando
                                 ? 'No se encontraron productos'
-                                : 'Todavía no hay productos'
+                                : verArchivados
+                                  ? 'No hay productos archivados'
+                                  : 'Todavía no hay productos'
                         }
                         description={
                             filtrando
@@ -737,7 +817,7 @@ export default function Productos() {
                                                     </span>
                                                     {!producto.activo && (
                                                         <Badge variant="outline">
-                                                            Inactivo
+                                                            Archivado
                                                         </Badge>
                                                     )}
                                                 </p>
@@ -807,6 +887,31 @@ export default function Productos() {
                                                     title="Editar"
                                                 >
                                                     <Pencil />
+                                                </Button>
+
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="size-8"
+                                                    onClick={(evento) => {
+                                                        evento.stopPropagation();
+                                                        void cambiarArchivado(
+                                                            producto,
+                                                            producto.activo,
+                                                        );
+                                                    }}
+                                                    title={
+                                                        producto.activo
+                                                            ? 'Archivar (dejar de vender)'
+                                                            : 'Reactivar (volver a vender)'
+                                                    }
+                                                >
+                                                    {producto.activo ? (
+                                                        <Archive />
+                                                    ) : (
+                                                        <ArchiveRestore />
+                                                    )}
                                                 </Button>
 
                                                 <Button
@@ -1099,7 +1204,8 @@ export default function Productos() {
                                 }
                             />
                             <Label htmlFor="activo" className="font-normal">
-                                Producto activo (disponible para vender)
+                                Producto activo (si lo desmarcás, se archiva:
+                                deja de aparecer para vender)
                             </Label>
                         </div>
                     </form>
@@ -1150,6 +1256,82 @@ export default function Productos() {
                     codigoInicial={formVariante.codigoInicial}
                     plantilla={formVariante.plantilla}
                 />
+            )}
+
+            {/* NO SE PUEDE BORRAR: TIENE VENTAS */}
+            {conVentas && (
+                <Dialog
+                    open
+                    onOpenChange={(abierto) => !abierto && setConVentas(null)}
+                >
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>
+                                Este producto ya se vendió
+                            </DialogTitle>
+                            <DialogDescription>
+                                {tituloProducto(conVentas.producto)}
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="text-muted-foreground space-y-2 text-sm">
+                            <p>
+                                Aparece en{' '}
+                                {conVentas.ventas === 1
+                                    ? '1 venta'
+                                    : `${conVentas.ventas} ventas`}
+                                . Si se borrara, esas ventas quedarían sin saber
+                                qué se vendió y se desarmarían los totales.
+                            </p>
+                            <p>
+                                <span className="text-foreground font-medium">
+                                    Archivalo
+                                </span>{' '}
+                                para que deje de aparecer en Productos, Ventas y
+                                Stock. Si te equivocaste en un dato, podés{' '}
+                                <span className="text-foreground font-medium">
+                                    editarlo
+                                </span>{' '}
+                                en vez de borrarlo.
+                            </p>
+                        </div>
+
+                        <DialogFooter className="gap-2">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => setConVentas(null)}
+                            >
+                                Cancelar
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={(evento) => {
+                                    const { producto } = conVentas;
+
+                                    setConVentas(null);
+                                    abrirEditar(producto, evento);
+                                }}
+                            >
+                                <Pencil />
+                                Editar
+                            </Button>
+                            <Button
+                                type="button"
+                                onClick={() =>
+                                    void cambiarArchivado(
+                                        conVentas.producto,
+                                        true,
+                                    )
+                                }
+                            >
+                                <Archive />
+                                Archivar
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             )}
 
             {/* SUMAR STOCK */}

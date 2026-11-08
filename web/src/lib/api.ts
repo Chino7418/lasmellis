@@ -503,6 +503,44 @@ export async function eliminarProducto(id: number): Promise<string> {
         : 'Producto eliminado.';
 }
 
+/** En cuántas ventas aparece el producto (si es más de cero, no se puede borrar). */
+export async function contarVentasDeProducto(id: number): Promise<number> {
+    const { data, error } = await supabase
+        .from('detalle_ventas')
+        .select('venta_id, variante:variantes_productos!inner ( producto_id )')
+        .eq('variante.producto_id', id)
+        .returns<{ venta_id: number }[]>();
+
+    if (error) {
+        fallar(error, 'No se pudo revisar si el producto tiene ventas.');
+    }
+
+    return new Set(data.map((fila) => fila.venta_id)).size;
+}
+
+/**
+ * Archivar = dejar de vender sin borrar: el producto sale de la lista,
+ * de Ventas y de Stock, pero su historial de ventas queda intacto.
+ */
+export async function archivarProducto(
+    id: number,
+    archivado: boolean,
+): Promise<void> {
+    const { error } = await supabase
+        .from('productos')
+        .update({ activo: !archivado })
+        .eq('id', id);
+
+    if (error) {
+        fallar(
+            error,
+            archivado
+                ? 'No se pudo archivar el producto.'
+                : 'No se pudo reactivar el producto.',
+        );
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* CLIENTES                                                           */
 /* ------------------------------------------------------------------ */
