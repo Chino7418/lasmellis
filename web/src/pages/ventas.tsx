@@ -20,6 +20,13 @@ import { EstadoVacio } from '@/components/estados';
 import { Page, PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -161,6 +168,11 @@ export default function Ventas() {
     // color, talle o código.
     const [productos, setProductos] = useState<Producto[] | null>(null);
     const [escanerAbierto, setEscanerAbierto] = useState(false);
+    // Código que comparten varios colores o talles: se pregunta cuál.
+    const [eligiendo, setEligiendo] = useState<{
+        producto: Producto;
+        variantes: Variante[];
+    } | null>(null);
 
     const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
     const [descuentoGeneral, setDescuentoGeneral] = useState('0');
@@ -281,18 +293,22 @@ export default function Ventas() {
                 return;
             }
 
-            const variante =
-                producto.variantes.find(
-                    (item) => item.codigo_barras === codigo,
-                ) ?? producto.variantes[0];
+            // Algunas marcas usan el mismo código para todos los colores
+            // o talles: si hay varias a la venta, se pregunta cuál.
+            const conCodigo = producto.variantes.filter(
+                (item) => item.codigo_barras === codigo,
+            );
+            const candidatas = (
+                conCodigo.length > 0 ? conCodigo : producto.variantes
+            ).filter((item) => item.activo);
 
-            if (!variante) {
+            if (producto.variantes.length === 0) {
                 toast.error('El producto no tiene variantes cargadas todavía.');
 
                 return;
             }
 
-            if (!producto.activo || !variante.activo) {
+            if (!producto.activo || candidatas.length === 0) {
                 toast.error(
                     `"${producto.nombre}" está marcado como inactivo: no está a la venta.`,
                 );
@@ -300,7 +316,13 @@ export default function Ventas() {
                 return;
             }
 
-            agregarAlCarrito(producto, variante);
+            if (candidatas.length > 1) {
+                setEligiendo({ producto, variantes: candidatas });
+
+                return;
+            }
+
+            agregarAlCarrito(producto, candidatas[0]);
         } catch {
             toast.error('Ocurrió un error al buscar el producto.');
         }
@@ -1031,6 +1053,73 @@ export default function Ventas() {
                 onCerrar={() => setEscanerAbierto(false)}
                 onDetectado={manejarCodigoEscaneado}
             />
+
+            {/* ¿CUÁL ES? (código compartido entre colores o talles) */}
+            {eligiendo && (
+                <Dialog
+                    open
+                    onOpenChange={(abierto) => !abierto && setEligiendo(null)}
+                >
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>¿Cuál es?</DialogTitle>
+                            <DialogDescription>
+                                {tituloProducto(eligiendo.producto)}: este
+                                código lo comparten varios colores o talles.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <ul className="grid gap-2">
+                            {eligiendo.variantes.map((variante) => {
+                                const stock = stockEnDeposito(
+                                    variante,
+                                    depositoId,
+                                );
+
+                                return (
+                                    <li key={variante.id}>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                agregarAlCarrito(
+                                                    eligiendo.producto,
+                                                    variante,
+                                                );
+                                                setEligiendo(null);
+                                            }}
+                                            className="hover:bg-muted/50 flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors"
+                                        >
+                                            <span className="min-w-0 flex-1 text-sm font-medium">
+                                                {descripcionVariante(
+                                                    variante.color?.nombre ??
+                                                        '',
+                                                    variante.talle?.nombre ??
+                                                        '',
+                                                ) || 'Sin color ni talle'}
+                                            </span>
+                                            <Badge
+                                                variant={
+                                                    stock > 0
+                                                        ? 'secondary'
+                                                        : 'danger'
+                                                }
+                                                className="tabular-nums"
+                                            >
+                                                {stock > 0
+                                                    ? `${cantidad(stock)} en stock`
+                                                    : 'Sin stock'}
+                                            </Badge>
+                                            <span className="text-sm font-medium tabular-nums">
+                                                {dinero(precioActivo(variante))}
+                                            </span>
+                                        </button>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </DialogContent>
+                </Dialog>
+            )}
 
             {clienteNuevoAbierto && (
                 <ClienteDialog

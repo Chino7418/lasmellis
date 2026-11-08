@@ -1,6 +1,8 @@
 import {
     ChevronRight,
+    Copy,
     Package,
+    PackagePlus,
     Pencil,
     Plus,
     ScanLine,
@@ -18,7 +20,9 @@ import {
     evitarCierreSiCreando,
     SelectorCatalogo,
 } from '@/components/selector-catalogo';
+import SumarStockDialog from '@/components/sumar-stock-dialog';
 import VarianteDialog from '@/components/variante-dialog';
+import type { PlantillaVariante } from '@/components/variante-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -51,7 +55,7 @@ import {
     listarProductos,
     obtenerCatalogos,
 } from '@/lib/api';
-import type { ItemCatalogo, TablaCatalogo } from '@/lib/api';
+import type { ItemCatalogo, TablaCatalogo, VarianteConCodigo } from '@/lib/api';
 import {
     cantidad,
     coincideBusqueda,
@@ -95,6 +99,21 @@ type Variante = {
     precios: Precio[];
     stock: Stock[];
 };
+
+/** Lo que necesitan "Sumar stock" y "Duplicar" de una variante. */
+function aVarianteConCodigo(variante: Variante): VarianteConCodigo {
+    const precio = variante.precios.find((item) => item.activo);
+
+    return {
+        id: variante.id,
+        color: variante.color?.nombre ?? null,
+        talle: variante.talle?.nombre ?? null,
+        stock: stockDeVariante(variante).total,
+        precio: precio ? Number(precio.precio) : null,
+        costo: Number(variante.costo),
+        activo: variante.activo,
+    };
+}
 
 type Producto = {
     id: number;
@@ -193,7 +212,28 @@ export default function Productos() {
         producto: { id: number; nombre: string };
         variante: Variante | null;
         codigoInicial?: string;
+        plantilla?: PlantillaVariante;
     } | null>(null);
+
+    // "Sumar stock" abierto: de qué producto y qué variantes se ofrecen.
+    const [sumando, setSumando] = useState<{
+        titulo: string;
+        variantes: VarianteConCodigo[];
+        varianteInicial?: number;
+    } | null>(null);
+
+    /** Variante nueva copiada de otra: mismo código, precio y costo. */
+    const nuevaVarianteParecida = (
+        producto: { id: number; nombre: string },
+        base: PlantillaVariante,
+    ) => {
+        setAbiertos((actuales) =>
+            actuales.includes(producto.id)
+                ? actuales
+                : [...actuales, producto.id],
+        );
+        setFormVariante({ producto, variante: null, plantilla: base });
+    };
 
     const cargarProductos = () => {
         return listarProductos<Producto>()
@@ -416,7 +456,7 @@ export default function Productos() {
 
                 if (enUso) {
                     toast.error(
-                        `Ese código de barras ya está cargado en ${enUso.codigo_interno}.`,
+                        'Ese código ya está cargado: tocá "Sumar stock" u "Otro color o talle".',
                     );
 
                     return;
@@ -805,6 +845,38 @@ export default function Productos() {
                                                     })
                                                 }
                                                 onEliminar={eliminarVariante}
+                                                onSumar={(variante) =>
+                                                    setSumando({
+                                                        titulo: tituloProducto(
+                                                            producto,
+                                                        ),
+                                                        variantes:
+                                                            producto.variantes.map(
+                                                                aVarianteConCodigo,
+                                                            ),
+                                                        varianteInicial:
+                                                            variante.id,
+                                                    })
+                                                }
+                                                onDuplicar={(variante) =>
+                                                    nuevaVarianteParecida(
+                                                        producto,
+                                                        {
+                                                            codigo_barras:
+                                                                variante.codigo_barras,
+                                                            precio: aVarianteConCodigo(
+                                                                variante,
+                                                            ).precio,
+                                                            costo: Number(
+                                                                variante.costo,
+                                                            ),
+                                                            stock_minimo:
+                                                                stockDeVariante(
+                                                                    variante,
+                                                                ).minimo,
+                                                        },
+                                                    )
+                                                }
                                             />
                                         )}
                                     </li>
@@ -857,12 +929,64 @@ export default function Productos() {
                                             codigo_barras: valor,
                                         }))
                                     }
-                                    onVerProducto={(enUso) => {
-                                        cerrarForm();
-                                        void buscarPorCodigoExacto(
-                                            enUso.codigo_interno,
-                                        );
-                                    }}
+                                    acciones={(enUso) => (
+                                        <>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                onClick={() => {
+                                                    cerrarForm();
+                                                    setSumando({
+                                                        titulo: enUso.titulo,
+                                                        variantes:
+                                                            enUso.variantes,
+                                                    });
+                                                }}
+                                            >
+                                                <PackagePlus />
+                                                Sumar stock
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => {
+                                                    const base =
+                                                        enUso.variantes[0];
+
+                                                    cerrarForm();
+                                                    nuevaVarianteParecida(
+                                                        {
+                                                            id: enUso.producto_id,
+                                                            nombre: enUso.titulo,
+                                                        },
+                                                        {
+                                                            codigo_barras:
+                                                                formData.codigo_barras.trim(),
+                                                            precio: base.precio,
+                                                            costo: base.costo,
+                                                        },
+                                                    );
+                                                }}
+                                            >
+                                                <Copy />
+                                                Otro color o talle
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => {
+                                                    cerrarForm();
+                                                    void buscarPorCodigoExacto(
+                                                        enUso.codigo_interno,
+                                                    );
+                                                }}
+                                            >
+                                                Ver producto
+                                            </Button>
+                                        </>
+                                    )}
                                 />
                             </Campo>
                         )}
@@ -1024,6 +1148,21 @@ export default function Productos() {
                     depositos={depositos}
                     onCatalogoCreado={agregarAlCatalogo}
                     codigoInicial={formVariante.codigoInicial}
+                    plantilla={formVariante.plantilla}
+                />
+            )}
+
+            {/* SUMAR STOCK */}
+            {sumando && (
+                <SumarStockDialog
+                    titulo={sumando.titulo}
+                    variantes={sumando.variantes}
+                    varianteInicial={sumando.varianteInicial}
+                    onCerrar={() => setSumando(null)}
+                    onListo={() => {
+                        setSumando(null);
+                        void cargarProductos();
+                    }}
                 />
             )}
         </Page>
@@ -1036,12 +1175,16 @@ function TablaVariantes({
     onAgregar,
     onEditar,
     onEliminar,
+    onSumar,
+    onDuplicar,
 }: {
     producto: Producto;
     stocks: ReturnType<typeof stockDeVariante>[];
     onAgregar: () => void;
     onEditar: (variante: Variante) => void;
     onEliminar: (variante: Variante) => void;
+    onSumar: (variante: Variante) => void;
+    onDuplicar: (variante: Variante) => void;
 }) {
     return (
         <div className="bg-muted/30 space-y-3 border-t px-5 py-4 md:pl-14">
@@ -1074,7 +1217,7 @@ function TablaVariantes({
                                 <th className="px-4 py-2.5 text-right font-medium">
                                     Stock
                                 </th>
-                                <th className="w-20 px-2 py-2.5" />
+                                <th className="w-36 px-2 py-2.5" />
                             </tr>
                         </thead>
 
@@ -1136,6 +1279,30 @@ function TablaVariantes({
                                         </td>
                                         <td className="px-2 py-1">
                                             <div className="flex justify-end gap-1">
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="size-8"
+                                                    onClick={() =>
+                                                        onSumar(variante)
+                                                    }
+                                                    title="Sumar stock (llegó mercadería)"
+                                                >
+                                                    <PackagePlus />
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="size-8"
+                                                    onClick={() =>
+                                                        onDuplicar(variante)
+                                                    }
+                                                    title="Duplicar: otro color o talle con el mismo código, precio y costo"
+                                                >
+                                                    <Copy />
+                                                </Button>
                                                 <Button
                                                     type="button"
                                                     variant="ghost"

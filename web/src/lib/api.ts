@@ -108,6 +108,8 @@ export async function buscarProductoPorCodigo<T>(
         .from('variantes_productos')
         .select('producto_id')
         .eq('codigo_barras', codigo)
+        // Varios colores pueden compartir código (siempre del mismo producto).
+        .limit(1)
         .maybeSingle();
 
     if (variante.error) {
@@ -258,16 +260,31 @@ export async function guardarVariante(datos: DatosVariante): Promise<void> {
     }
 }
 
+/** Una variante que usa un código de barras, con lo necesario para decidir qué hacer. */
+export type VarianteConCodigo = {
+    id: number;
+    color: string | null;
+    talle: string | null;
+    stock: number;
+    precio: number | null;
+    costo: number;
+    activo: boolean;
+};
+
 export type CodigoEnUso = {
     producto_id: number;
     codigo_interno: string;
+    nombre: string;
     titulo: string;
+    /** Las variantes del producto con ese código (varias si comparten código entre colores). */
+    variantes: VarianteConCodigo[];
 };
 
 /**
- * Si el código de barras ya lo tiene otra variante, devuelve de qué
- * producto es; si está libre, null. `exceptoVarianteId` es la variante
- * que se está editando (su propio código no cuenta como repetido).
+ * Si el código de barras ya lo usa alguna variante, devuelve de qué
+ * producto es y qué variantes lo tienen; si está libre, null.
+ * `exceptoVarianteId` es la variante que se está editando (su propio
+ * código no cuenta).
  */
 export async function codigoBarrasEnUso(
     codigo: string,
@@ -276,47 +293,100 @@ export async function codigoBarrasEnUso(
     let consulta = supabase
         .from('variantes_productos')
         .select(
-            'id, producto:productos ( id, codigo_interno, nombre, descripcion, marca:marcas ( nombre ) )',
+            `id, costo, activo,
+            color:colores ( nombre ),
+            talle:talles ( nombre ),
+            precios:precios_productos ( precio, activo ),
+            stock ( cantidad ),
+            producto:productos ( id, codigo_interno, nombre, descripcion, marca:marcas ( nombre ) )`,
         )
-        .eq('codigo_barras', codigo.trim());
+        .eq('codigo_barras', codigo.trim())
+        .order('id');
 
     if (exceptoVarianteId) {
         consulta = consulta.neq('id', exceptoVarianteId);
     }
 
-    const { data, error } = await consulta
-        .limit(1)
-        .returns<
-            {
+    const { data, error } = await consulta.returns<
+        {
+            id: number;
+            costo: string | number;
+            activo: boolean;
+            color: { nombre: string } | null;
+            talle: { nombre: string } | null;
+            precios: { precio: string | number; activo: boolean }[];
+            stock: { cantidad: string | number }[];
+            producto: {
                 id: number;
-                producto: {
-                    id: number;
-                    codigo_interno: string;
-                    nombre: string;
-                    descripcion: string | null;
-                    marca: { nombre: string } | null;
-                };
-            }[]
-        >()
-        .maybeSingle();
+                codigo_interno: string;
+                nombre: string;
+                descripcion: string | null;
+                marca: { nombre: string } | null;
+            };
+        }[]
+    >();
 
     if (error) {
         fallar(error, 'No se pudo revisar el código de barras.');
     }
 
-    if (!data) {
+    if (data.length === 0) {
         return null;
     }
 
-    const { producto } = data;
+    // Un código solo puede estar en un producto: todas son del mismo.
+    const { producto } = data[0];
 
     return {
         producto_id: producto.id,
         codigo_interno: producto.codigo_interno,
+        nombre: producto.nombre,
         titulo: [producto.marca?.nombre, producto.nombre, producto.descripcion]
             .filter(Boolean)
             .join(' - '),
+        variantes: data
+            .filter((fila) => fila.producto.id === producto.id)
+            .map((fila) => {
+                const precio = fila.precios.find((item) => item.activo);
+
+                return {
+                    id: fila.id,
+                    color: fila.color?.nombre ?? null,
+                    talle: fila.talle?.nombre ?? null,
+                    stock: fila.stock.reduce(
+                        (suma, item) => suma + Number(item.cantidad),
+                        0,
+                    ),
+                    precio: precio ? Number(precio.precio) : null,
+                    costo: Number(fila.costo),
+                    activo: fila.activo,
+                };
+            }),
     };
+}
+
+/**
+ * Llegó mercadería de una variante que ya existe: suma las unidades y,
+ * si se indican, actualiza costo y precio. Devuelve el stock nuevo.
+ */
+export async function sumarStock(
+    varianteId: number,
+    cantidad: number,
+    costo?: number | null,
+    precio?: number | null,
+): Promise<number> {
+    const { data, error } = await supabase.rpc('sumar_stock', {
+        p_variante_id: varianteId,
+        p_cantidad: cantidad,
+        p_costo: costo ?? null,
+        p_precio: precio ?? null,
+    });
+
+    if (error) {
+        fallar(error, 'No se pudo sumar el stock.');
+    }
+
+    return Number(data);
 }
 
 export async function eliminarVariante(id: number): Promise<void> {

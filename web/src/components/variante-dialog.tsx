@@ -38,6 +38,17 @@ export type VarianteEditable = {
     }[];
 };
 
+/**
+ * Datos que se copian al crear una variante parecida a otra: mismo
+ * código, precio y costo; color, talle y stock se eligen de nuevo.
+ */
+export type PlantillaVariante = {
+    codigo_barras: string;
+    precio: number | null;
+    costo: number;
+    stock_minimo?: number;
+};
+
 type Formulario = {
     color_id: string;
     talle_id: string;
@@ -69,11 +80,26 @@ function formularioInicial(
     variante: VarianteEditable | null,
     depositos: ItemCatalogo[],
     codigoInicial: string,
+    plantilla: PlantillaVariante | null,
 ): Formulario {
     const depositoId = String(
         variante?.stock[0]?.deposito?.id ?? depositos[0]?.id ?? '',
     );
     const precio = variante?.precios.find((item) => item.activo)?.precio;
+
+    if (!variante && plantilla) {
+        return {
+            color_id: '',
+            talle_id: '',
+            codigo_barras: plantilla.codigo_barras,
+            precio: plantilla.precio !== null ? String(plantilla.precio) : '',
+            costo: plantilla.costo > 0 ? String(plantilla.costo) : '',
+            deposito_id: depositoId,
+            cantidad: '0',
+            stock_minimo: String(plantilla.stock_minimo ?? 0),
+            activo: true,
+        };
+    }
 
     return {
         color_id: variante?.color?.id ? String(variante.color.id) : '',
@@ -106,6 +132,7 @@ export default function VarianteDialog({
     depositos,
     onCatalogoCreado,
     codigoInicial = '',
+    plantilla = null,
 }: {
     abierto: boolean;
     onCerrar: () => void;
@@ -119,9 +146,11 @@ export default function VarianteDialog({
     onCatalogoCreado: (tabla: TablaCatalogo, item: ItemCatalogo) => void;
     /** Código ya cargado al crear el producto (solo variante nueva). */
     codigoInicial?: string;
+    /** Variante nueva copiada de otra (otro color o talle). */
+    plantilla?: PlantillaVariante | null;
 }) {
     const [form, setForm] = useState<Formulario>(() =>
-        formularioInicial(variante, depositos, codigoInicial),
+        formularioInicial(variante, depositos, codigoInicial, plantilla),
     );
     const [guardando, setGuardando] = useState(false);
     const [enUso, setEnUso] = useState<CodigoEnUso | null>(null);
@@ -148,7 +177,7 @@ export default function VarianteDialog({
 
         if (enUso) {
             toast.error(
-                `Ese código de barras ya está cargado en ${enUso.codigo_interno}.`,
+                `Ese código de barras es de otro producto (${enUso.codigo_interno}).`,
             );
 
             return;
@@ -204,9 +233,17 @@ export default function VarianteDialog({
                 >
                     <DialogHeader>
                         <DialogTitle>
-                            {variante ? 'Editar variante' : 'Nueva variante'}
+                            {variante
+                                ? 'Editar variante'
+                                : plantilla
+                                  ? 'Otro color o talle'
+                                  : 'Nueva variante'}
                         </DialogTitle>
-                        <DialogDescription>{producto.nombre}</DialogDescription>
+                        <DialogDescription>
+                            {producto.nombre}
+                            {plantilla &&
+                                ' · Código, precio y costo copiados: elegí el color y el talle.'}
+                        </DialogDescription>
                     </DialogHeader>
 
                     <form
@@ -221,13 +258,16 @@ export default function VarianteDialog({
                         >
                             <CampoCodigoBarras
                                 id="codigo_barras"
-                                autoFocus={!variante && !codigoInicial}
+                                autoFocus={
+                                    !variante && !codigoInicial && !plantilla
+                                }
                                 valor={form.codigo_barras}
                                 onCambio={(valor) =>
                                     cambiar({ codigo_barras: valor })
                                 }
                                 onEnUso={setEnUso}
                                 exceptoVarianteId={variante?.id}
+                                productoId={producto.id}
                             />
                         </Campo>
 

@@ -1,5 +1,6 @@
-import { CircleAlert, ScanLine, Wand2 } from 'lucide-react';
+import { CircleAlert, Info, ScanLine, Wand2 } from 'lucide-react';
 import { useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 import EscanerCodigoBarras from '@/components/escaner-codigo-barras';
 import { Button } from '@/components/ui/button';
@@ -7,10 +8,25 @@ import { Input } from '@/components/ui/input';
 import { codigoBarrasEnUso, generarCodigoInterno } from '@/lib/api';
 import type { CodigoEnUso } from '@/lib/api';
 
+/** "Negro / 95", o null si no tiene color ni talle. */
+export function nombreVariante(variante: {
+    color: string | null;
+    talle: string | null;
+}): string | null {
+    return [variante.color, variante.talle].filter(Boolean).join(' / ') || null;
+}
+
 /**
  * Código de barras con escáner y generador. Apenas se escanea, se
- * genera o se sale del campo, revisa si ya está cargado en otro
- * producto y lo avisa ahí mismo, antes de completar el resto.
+ * genera o se sale del campo, revisa si ya está cargado y lo avisa ahí
+ * mismo, antes de completar el resto:
+ *
+ *  - Si lo usa otro color o talle de `productoId` (el producto que se
+ *    edita), es válido: algunas marcas usan un código para todos los
+ *    colores. Se muestra como nota.
+ *  - Si se pasa `acciones`, el aviso ofrece qué hacer (sumar stock,
+ *    agregar otro color...) en vez de mostrarse como error.
+ *  - Si no, es un error: el código es de otro producto.
  */
 export function CampoCodigoBarras({
     id,
@@ -19,7 +35,8 @@ export function CampoCodigoBarras({
     onEnUso,
     exceptoVarianteId,
     autoFocus,
-    onVerProducto,
+    productoId,
+    acciones,
 }: {
     id: string;
     valor: string;
@@ -29,8 +46,10 @@ export function CampoCodigoBarras({
     /** Variante que se edita: su propio código no cuenta como repetido. */
     exceptoVarianteId?: number;
     autoFocus?: boolean;
-    /** Si se indica, el aviso ofrece ir al producto que ya lo tiene. */
-    onVerProducto?: (enUso: CodigoEnUso) => void;
+    /** Producto que se edita: otro color suyo con este código vale. */
+    productoId?: number;
+    /** Botones para ofrecer cuando el código ya está cargado. */
+    acciones?: (enUso: CodigoEnUso) => ReactNode;
 }) {
     const [enUso, setEnUso] = useState<CodigoEnUso | null>(null);
     const [escanerAbierto, setEscanerAbierto] = useState(false);
@@ -56,7 +75,12 @@ export function CampoCodigoBarras({
             }
 
             setEnUso(resultado);
-            onEnUso?.(resultado);
+            // Compartido con otro color del mismo producto: no bloquea.
+            onEnUso?.(
+                resultado && resultado.producto_id === productoId
+                    ? null
+                    : resultado,
+            );
         } catch {
             revisado.current = null;
         }
@@ -120,28 +144,60 @@ export function CampoCodigoBarras({
                 </Button>
             </div>
 
-            {enUso && (
-                <div className="border-destructive/40 bg-destructive/5 text-destructive flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2 text-sm">
-                    <CircleAlert className="size-4 shrink-0" />
-                    <span className="min-w-0 flex-1">
-                        Ya está cargado en{' '}
-                        <span className="font-mono">
-                            {enUso.codigo_interno}
-                        </span>
-                        {' · '}
-                        {enUso.titulo}
+            {enUso && enUso.producto_id === productoId ? (
+                <p className="text-muted-foreground flex items-start gap-2 text-xs">
+                    <Info className="mt-0.5 size-3.5 shrink-0" />
+                    <span>
+                        Este código también lo usa{' '}
+                        {enUso.variantes
+                            .map(
+                                (item) =>
+                                    nombreVariante(item) ?? 'otra variante',
+                            )
+                            .join(', ')}{' '}
+                        de este producto. Al vender, la app va a preguntar cuál
+                        es.
                     </span>
-                    {onVerProducto && (
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onVerProducto(enUso)}
-                        >
-                            Ver producto
-                        </Button>
-                    )}
+                </p>
+            ) : enUso && acciones ? (
+                <div className="border-primary/25 bg-accent/40 grid gap-3 rounded-lg border p-3 text-sm">
+                    <div>
+                        <p className="flex items-center gap-2 font-medium">
+                            <Info className="text-primary size-4 shrink-0" />
+                            Este código ya está cargado
+                        </p>
+                        <p className="mt-1">{enUso.titulo}</p>
+                        <ul className="text-muted-foreground mt-1 text-xs">
+                            {enUso.variantes.map((item) => (
+                                <li key={item.id}>
+                                    {nombreVariante(item) ??
+                                        'Sin color ni talle'}
+                                    {' · '}
+                                    {item.stock > 0
+                                        ? `stock ${item.stock}`
+                                        : 'sin stock'}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {acciones(enUso)}
+                    </div>
                 </div>
+            ) : (
+                enUso && (
+                    <div className="border-destructive/40 bg-destructive/5 text-destructive flex items-start gap-2 rounded-md border px-3 py-2 text-sm">
+                        <CircleAlert className="mt-0.5 size-4 shrink-0" />
+                        <span className="min-w-0 flex-1">
+                            Ya está cargado en otro producto:{' '}
+                            <span className="font-mono">
+                                {enUso.codigo_interno}
+                            </span>
+                            {' · '}
+                            {enUso.titulo}
+                        </span>
+                    </div>
+                )
             )}
 
             <EscanerCodigoBarras
