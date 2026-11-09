@@ -657,16 +657,130 @@ export async function darDeBajaCliente(id: number): Promise<string> {
 /* CUENTA CORRIENTE                                                   */
 /* ------------------------------------------------------------------ */
 
+/** Una prenda de una venta, para mostrar qué se llevó. */
+export type ItemVentaCuenta = {
+    cantidad: number | string;
+    precio_unitario: number | string;
+    subtotal: number | string;
+    variante: {
+        color: { nombre: string } | null;
+        talle: { nombre: string } | null;
+        producto: {
+            nombre: string;
+            descripcion: string | null;
+            marca: { nombre: string } | null;
+        };
+    } | null;
+};
+
 export type MovimientoCuenta = {
     id: number;
+    cliente_id: number;
     tipo: 'debe' | 'haber';
     importe: number;
     fecha: string;
     concepto: string;
     observaciones: string | null;
-    venta: { numero: string } | null;
+    venta: {
+        numero: string;
+        total: number | string;
+        detalle: ItemVentaCuenta[];
+    } | null;
     pago: { medio_pago: string } | null;
 };
+
+/** Movimiento con la venta y sus prendas (qué se llevó). */
+const MOVIMIENTO_CUENTA_SELECT = `
+    id, cliente_id, tipo, importe, fecha, concepto, observaciones,
+    venta:ventas (
+        numero, total,
+        detalle:detalle_ventas (
+            cantidad, precio_unitario, subtotal,
+            variante:variantes_productos (
+                color:colores ( nombre ),
+                talle:talles ( nombre ),
+                producto:productos ( nombre, descripcion, marca:marcas ( nombre ) )
+            )
+        )
+    ),
+    pago:pagos ( medio_pago )
+`;
+
+/** "2 × Lara - Corpiño - Encaje · Negro / 95 · $ 30.000" */
+export function textoItemVenta(item: ItemVentaCuenta): string {
+    const producto = item.variante?.producto;
+    const nombre = producto
+        ? [producto.marca?.nombre, producto.nombre, producto.descripcion]
+              .filter(Boolean)
+              .join(' - ')
+        : 'Producto';
+    const variante = [
+        item.variante?.color?.nombre,
+        item.variante?.talle?.nombre,
+    ]
+        .filter(Boolean)
+        .join(' / ');
+    const cantidad = Number(item.cantidad);
+
+    return [
+        `${cantidad} × ${nombre}`,
+        variante,
+        new Intl.NumberFormat('es-AR', {
+            style: 'currency',
+            currency: 'ARS',
+        }).format(Number(item.subtotal)),
+    ]
+        .filter(Boolean)
+        .join(' · ');
+}
+
+/**
+ * Lo que compone la deuda actual: los movimientos desde la última vez
+ * que el saldo quedó en cero (o desde el principio). Recibe los
+ * movimientos de UN cliente, del más viejo al más nuevo.
+ */
+export function movimientosDeLaDeuda(
+    movimientos: MovimientoCuenta[],
+): MovimientoCuenta[] {
+    let saldo = 0;
+    let desde = 0;
+
+    movimientos.forEach((movimiento, i) => {
+        saldo +=
+            movimiento.tipo === 'debe'
+                ? Number(movimiento.importe)
+                : -Number(movimiento.importe);
+
+        if (saldo <= 0.005) {
+            desde = i + 1;
+        }
+    });
+
+    return movimientos.slice(desde);
+}
+
+/** Movimientos de varios clientes a la vez (para el informe de saldos). */
+export async function movimientosDeClientes(
+    clienteIds: number[],
+): Promise<MovimientoCuenta[]> {
+    if (clienteIds.length === 0) {
+        return [];
+    }
+
+    const { data, error } = await supabase
+        .from('movimientos_cuenta_corriente')
+        .select(MOVIMIENTO_CUENTA_SELECT)
+        .in('cliente_id', clienteIds)
+        .order('fecha')
+        .order('id')
+        .returns<MovimientoCuenta[]>();
+
+    if (error) {
+        fallar(error, 'No se pudieron obtener los movimientos.');
+    }
+
+    return data;
+}
 
 /** Movimientos de la cuenta corriente de un cliente, del más viejo al más nuevo. */
 export async function estadoDeCuenta(clienteId: number): Promise<{
@@ -677,9 +791,7 @@ export async function estadoDeCuenta(clienteId: number): Promise<{
 }> {
     const { data, error } = await supabase
         .from('movimientos_cuenta_corriente')
-        .select(
-            'id, tipo, importe, fecha, concepto, observaciones, venta:ventas ( numero ), pago:pagos ( medio_pago )',
-        )
+        .select(MOVIMIENTO_CUENTA_SELECT)
         .eq('cliente_id', clienteId)
         .order('fecha')
         .order('id')

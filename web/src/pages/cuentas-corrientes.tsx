@@ -35,12 +35,58 @@ import {
     cargarSaldoAnterior,
     estadoDeCuenta,
     listarClientes,
+    movimientosDeClientes,
+    movimientosDeLaDeuda,
     pagarCuentaCorriente,
+    textoItemVenta,
 } from '@/lib/api';
 import type { MovimientoCuenta } from '@/lib/api';
 import { dinero, fechaHora, nombreCompleto, tipoPago } from '@/lib/formato';
 import { descargarPdf, fechaArchivo } from '@/lib/informes';
 import { cn } from '@/lib/utils';
+
+const fechaCorta = new Intl.DateTimeFormat('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    timeZone: 'America/Argentina/Buenos_Aires',
+});
+
+/** Las fechas se guardan en UTC sin zona. */
+const fechaDeMovimiento = (fecha: string) =>
+    fechaCorta.format(new Date(`${fecha}Z`));
+
+/** Concepto con medio de pago: "Pago de cuenta corriente · Efectivo". */
+function conceptoDe(movimiento: MovimientoCuenta): string {
+    return movimiento.pago
+        ? `${movimiento.concepto} · ${tipoPago(movimiento.pago.medio_pago)}`
+        : movimiento.concepto;
+}
+
+/**
+ * Renglones de "qué se llevó" de un movimiento de venta. Si la venta
+ * se pagó en parte al comprar, se aclara cuánto (a la cuenta solo pasa
+ * lo que quedó debiendo).
+ */
+function lineasDeVenta(movimiento: MovimientoCuenta): string[] {
+    const venta = movimiento.venta;
+
+    if (!venta || movimiento.tipo !== 'debe') {
+        return [];
+    }
+
+    const lineas = venta.detalle.map(textoItemVenta);
+    const total = Number(venta.total);
+    const pagado = total - Number(movimiento.importe);
+
+    if (pagado > 0.005) {
+        lineas.push(
+            `Total ${dinero(total)} · pagó ${dinero(pagado)} al comprar`,
+        );
+    }
+
+    return lineas;
+}
 
 type Cliente = {
     id: number;
@@ -135,27 +181,59 @@ export default function CuentasCorrientes() {
         );
 
         try {
+            // Qué compone cada deuda: lo que pasó desde que estuvo al día.
+            const deudores = visibles.filter(
+                (cliente) => Number(cliente.saldo) > 0,
+            );
+            const movimientos = await movimientosDeClientes(
+                deudores.map((cliente) => cliente.id),
+            );
+
+            const detalleDe = (cliente: Cliente) => {
+                if (Number(cliente.saldo) <= 0) {
+                    return 'Al día';
+                }
+
+                return movimientosDeLaDeuda(
+                    movimientos.filter(
+                        (movimiento) => movimiento.cliente_id === cliente.id,
+                    ),
+                )
+                    .flatMap((movimiento) => [
+                        `${fechaDeMovimiento(movimiento.fecha)}  ${conceptoDe(movimiento)}: ${movimiento.tipo === 'debe' ? '+' : '-'}${dinero(movimiento.importe)}`,
+                        ...lineasDeVenta(movimiento).map(
+                            (linea) => `      ${linea}`,
+                        ),
+                    ])
+                    .join('\n');
+            };
+
             await descargarPdf({
                 archivo: `saldos-cuentas-corrientes-${fechaArchivo()}`,
                 titulo: 'Saldos de cuentas corrientes',
                 subtitulo: soloDeudores
-                    ? `${visibles.length} cliente${visibles.length !== 1 ? 's' : ''} con deuda`
-                    : `${visibles.length} cliente${visibles.length !== 1 ? 's' : ''}`,
+                    ? `${visibles.length} cliente${visibles.length !== 1 ? 's' : ''} con deuda · el detalle es lo que compone cada saldo`
+                    : `${visibles.length} cliente${visibles.length !== 1 ? 's' : ''} · el detalle es lo que compone cada saldo`,
+                apaisado: true,
                 columnas: [
-                    { titulo: 'Cliente' },
-                    { titulo: 'Teléfono', ancho: 38 },
-                    { titulo: 'DNI', ancho: 28 },
-                    { titulo: 'Saldo', ancho: 34, alinear: 'right' },
+                    { titulo: 'Cliente', ancho: 55 },
+                    { titulo: 'Detalle' },
+                    { titulo: 'Saldo', ancho: 32, alinear: 'right' },
                 ],
                 filas: visibles.map((cliente) => [
-                    nombreCompleto(cliente),
-                    cliente.telefono ?? '—',
-                    cliente.documento ?? '—',
+                    [
+                        nombreCompleto(cliente),
+                        cliente.telefono && `Tel. ${cliente.telefono}`,
+                        cliente.documento && `DNI ${cliente.documento}`,
+                    ]
+                        .filter(Boolean)
+                        .join('\n'),
+                    detalleDe(cliente),
                     Number(cliente.saldo) > 0
                         ? dinero(cliente.saldo)
                         : 'Al día',
                 ]),
-                pie: ['Total adeudado', '', '', dinero(total)],
+                pie: ['Total adeudado', '', dinero(total)],
             });
         } catch {
             toast.error('No se pudo generar el PDF.');
@@ -409,6 +487,49 @@ function DetalleCuenta({
             .reverse();
     }, [movimientos]);
 
+    const [descargandoPdf, setDescargandoPdf] = useState(false);
+
+    const descargarEstadoPdf = async () => {
+        setDescargandoPdf(true);
+
+        try {
+            // Del más viejo al más nuevo, como un resumen de cuenta.
+            const cronologico = [...filas].reverse();
+
+            await descargarPdf({
+                archivo: `estado-de-cuenta-${nombreCompleto(cliente)
+                    .toLowerCase()
+                    .replace(/\s+/g, '-')}-${fechaArchivo()}`,
+                titulo: `Estado de cuenta: ${nombreCompleto(cliente)}`,
+                subtitulo: [
+                    cliente.telefono && `Tel. ${cliente.telefono}`,
+                    cliente.documento && `DNI ${cliente.documento}`,
+                ]
+                    .filter(Boolean)
+                    .join(' · '),
+                columnas: [
+                    { titulo: 'Fecha', ancho: 20 },
+                    { titulo: 'Detalle' },
+                    { titulo: 'Debe', ancho: 26, alinear: 'right' },
+                    { titulo: 'Pagó', ancho: 26, alinear: 'right' },
+                    { titulo: 'Saldo', ancho: 28, alinear: 'right' },
+                ],
+                filas: cronologico.map((fila) => [
+                    fechaDeMovimiento(fila.fecha),
+                    [conceptoDe(fila), ...lineasDeVenta(fila)].join('\n'),
+                    fila.tipo === 'debe' ? dinero(fila.importe) : '',
+                    fila.tipo === 'haber' ? dinero(fila.importe) : '',
+                    dinero(fila.acumulado),
+                ]),
+                pie: ['', 'Saldo actual', '', '', dinero(saldo)],
+            });
+        } catch {
+            toast.error('No se pudo generar el PDF.');
+        } finally {
+            setDescargandoPdf(false);
+        }
+    };
+
     const registrarPago = async (evento: FormEvent) => {
         evento.preventDefault();
 
@@ -505,6 +626,18 @@ function DetalleCuenta({
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                        {movimientos.length > 0 && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={descargarEstadoPdf}
+                                disabled={descargandoPdf}
+                            >
+                                <FileDown />
+                                {descargandoPdf ? 'Generando...' : 'PDF'}
+                            </Button>
+                        )}
+
                         {!conSaldoAnterior && (
                             <Button
                                 variant="outline"
@@ -714,6 +847,7 @@ function DetalleCuenta({
                                             <p className="text-muted-foreground text-xs">
                                                 {fechaHora(`${fila.fecha}Z`)}
                                             </p>
+                                            <DetalleVenta movimiento={fila} />
                                         </div>
                                         <div className="shrink-0 text-right tabular-nums">
                                             <p
@@ -778,6 +912,9 @@ function DetalleCuenta({
                                                             )}
                                                         </span>
                                                     )}
+                                                    <DetalleVenta
+                                                        movimiento={fila}
+                                                    />
                                                 </td>
                                                 <td className="text-destructive px-3 py-2 text-right tabular-nums">
                                                     {fila.tipo === 'debe'
@@ -802,5 +939,22 @@ function DetalleCuenta({
                 </div>
             </DialogContent>
         </Dialog>
+    );
+}
+
+/** Qué se llevó en una venta que pasó a la cuenta corriente. */
+function DetalleVenta({ movimiento }: { movimiento: MovimientoCuenta }) {
+    const lineas = lineasDeVenta(movimiento);
+
+    if (lineas.length === 0) {
+        return null;
+    }
+
+    return (
+        <ul className="text-muted-foreground mt-1 space-y-0.5 border-l-2 pl-2 text-xs">
+            {lineas.map((linea, i) => (
+                <li key={i}>{linea}</li>
+            ))}
+        </ul>
     );
 }
